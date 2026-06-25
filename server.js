@@ -20,10 +20,8 @@ const wss = new WebSocketServer({ server });
 // ============================================================================
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-// Use Railway volume mount path if available, otherwise local ./data
-const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
-  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'data')
-  : path.join(__dirname, 'data');
+// Use Railway volume mount path directly, otherwise local ./data
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 const YH_SYMBOL = process.env.YH_SYMBOL || '^BVSP';
 
 console.log(`[Config] DATA_DIR = ${DATA_DIR}`);
