@@ -561,8 +561,10 @@ app.post('/api/seed', (req, res) => {
     if (engineReady && scanner) {
       // Load data into memory
       for (const f of files) {
+        if (!f.startsWith('ohlcv_')) continue;
         const tf = f.replace('ohlcv_', '').replace('.json', '');
         state.ohlcData[tf] = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf-8'));
+        state.lastDataFetch[tf] = Date.now();
       }
       // Load stats
       try {
