@@ -1,0 +1,22 @@
+{
+  "name": "winfut-pro",
+  "version": "2.0.0",
+  "description": "WINFUT PRO — Plataforma de Análise Quantitativa com Detecção de Padrões em Tempo Real",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "study": "node estudar.js",
+    "study:quick": "node estudar.js --quick"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0",
+    "node-cron": "^3.0.3"
+  },
+  "keywords": ["winfut", "ibovespa", "trading", "quant", "pattern-detection"],
+  "license": "MIT"
+}

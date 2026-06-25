@@ -1,0 +1,9 @@
+node_modules/
+data/ohlcv_*.json
+data/scan_*.json
+data/pattern_stats.json
+data/learning_report.json
+data/alerts.json
+db/
+*.log
+.DS_Store
