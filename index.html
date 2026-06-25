@@ -1449,26 +1449,28 @@ async function runBacktest() {
   const results = document.getElementById('bt-results');
   results.innerHTML = '<div class="loading"><div class="spinner"></div> Executando backtest...</div>';
 
-  // Try to fetch data from Yahoo Finance
+  // Fetch data from local storage (pré-carregado do volume)
   let data = [];
-  const range = getYahooRange(start, end);
-  const yahooPath = `/v8/finance/chart/${encodeURIComponent(STATE.yhSymbol)}?range=${range}&interval=${tf}`;
-  const fetchUrl = `/api/yahoo?url=${encodeURIComponent(yahooPath)}`;
+  const tfMap = { '5m': 'M5', '15m': 'M15', '1h': 'H1', '1d': 'D1' };
+  const apiTf = tfMap[tf] || 'D1';
 
   try {
-    const resp = await fetch(fetchUrl);
-    const json = await resp.json();
-    if (json.chart?.result?.[0]) {
-      const r = json.chart.result[0];
-      const q = r.indicators.quote[0];
-      for (let i = 0; i < r.timestamp.length; i++) {
-        if (q.open[i] !== null) {
-          data.push({ t: new Date(r.timestamp[i] * 1000), o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i], v: q.volume[i] || 0 });
-        }
-      }
+    const resp = await fetch(`/api/data/${apiTf}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const allData = await resp.json();
+    if (!Array.isArray(allData) || allData.length === 0) throw new Error('Array vazio');
+
+    // Filter by date range
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime() + 86400000; // end of day
+    data = allData.filter(c => c.t >= startMs && c.t <= endMs)
+      .map(c => ({ t: new Date(c.t), o: c.o, h: c.h, l: c.l, c: c.c, v: c.v || 0 }));
+
+    if (data.length < 20) {
+      results.innerHTML = `<div class="alert alert-info">Dados filtrados: ${data.length} candles (${apiTf}). Total disponível: ${allData.length} candles. Ajuste as datas.</div>`;
     }
   } catch (e) {
-    results.innerHTML = `<div class="alert alert-danger">Erro ao buscar dados: ${e.message}. Tente importar CSV em Config.</div>`;
+    results.innerHTML = `<div class="alert alert-danger">Erro ao buscar dados locais: ${e.message}. Execute o Estudo primeiro para baixar dados.</div>`;
     return;
   }
 
