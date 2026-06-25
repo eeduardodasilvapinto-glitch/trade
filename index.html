@@ -488,6 +488,20 @@ tr:hover { background: var(--bg3); }
               <input id="bt-risk" type="number" step="0.1" value="0.5">
             </div>
           </div>
+          <div class="grid-3">
+            <div class="form-group">
+              <label>Meta de Lucro (R$)</label>
+              <input id="bt-target" type="number" value="1000">
+            </div>
+            <div class="form-group">
+              <label>Limite de Perda (R$)</label>
+              <input id="bt-loss-limit" type="number" value="500">
+            </div>
+            <div class="form-group">
+              <label>Máx Trades</label>
+              <input id="bt-max-trades" type="number" value="200">
+            </div>
+          </div>
           <button class="btn btn-blue mt-8" onclick="runBacktest()">🚀 Executar Backtest</button>
         </div>
         <div id="bt-results"></div>
@@ -1445,6 +1459,9 @@ async function runBacktest() {
   const strategy = document.getElementById('bt-strat').value;
   const capital = parseFloat(document.getElementById('bt-capital').value);
   const risk = parseFloat(document.getElementById('bt-risk').value);
+  const maxTrades = parseInt(document.getElementById('bt-max-trades').value) || 200;
+  const profitTarget = parseFloat(document.getElementById('bt-target').value) || 1000;
+  const lossLimit = parseFloat(document.getElementById('bt-loss-limit').value) || 500;
 
   const results = document.getElementById('bt-results');
   results.innerHTML = '<div class="loading"><div class="spinner"></div> Executando backtest...</div>';
@@ -1479,20 +1496,30 @@ async function runBacktest() {
     return;
   }
 
-  // Run strategy
-  const trades = runStrategy(data, strategy);
-  const metrics = calculateMetrics(trades, capital);
+  // Run strategy with limits
+  const tradeResult = runStrategy(data, strategy, capital, maxTrades, profitTarget, lossLimit);
+  const metrics = calculateMetrics(tradeResult, capital, profitTarget, lossLimit);
+  const totalTrades = tradeResult.trades.length;
 
-  STATE.backtests.unshift({ date: new Date().toISOString(), strategy, tf, start, end, trades: trades.length, ...metrics });
+  STATE.backtests.unshift({ date: new Date().toISOString(), strategy, tf, start, end, trades: totalTrades, ...metrics });
   STATE.backtests = STATE.backtests.slice(0, 20);
   localStorage.setItem('winfut_backtests', JSON.stringify(STATE.backtests));
 
+  const stoppedLabel = metrics.stoppedBy === 'profit_target' ? '🎯 Meta atingida' :
+                       metrics.stoppedBy === 'loss_limit' ? '🛑 Limite de perda' :
+                       metrics.stoppedBy === 'max_trades' ? '📊 Máx trades' : '🏁 Período completo';
+
   results.innerHTML = `
-    <div class="card"><div class="card-title">📊 Resultados</div>
+    <div class="card"><div class="card-title">📊 Resultados ${metrics.stoppedBy ? `— ${stoppedLabel}` : ''}</div>
       <div class="grid-3">
-        <div><span class="label">Trades</span><div class="mono" style="font-size:20px;">${trades.length}</div></div>
+        <div><span class="label">Trades</span><div class="mono" style="font-size:20px;">${totalTrades}</div></div>
         <div><span class="label">Win Rate</span><div class="mono" style="font-size:20px;">${metrics.winRate.toFixed(1)}%</div></div>
-        <div><span class="label">P&L Final</span><div class="mono" style="font-size:20px; color:${metrics.finalCapital >= capital ? 'var(--green)' : 'var(--red)'}">R$ ${metrics.finalCapital.toFixed(2)}</div></div>
+        <div><span class="label">P&L</span><div class="mono" style="font-size:20px; color:${metrics.runningPnl >= 0 ? 'var(--green)' : 'var(--red)'}">R$ ${metrics.runningPnl?.toFixed(2) || '0.00'}</div></div>
+      </div>
+      <div class="grid-3 mt-8">
+        <div><span class="label">Capital Final</span><div class="mono">R$ ${metrics.finalCapital.toFixed(2)}</div></div>
+        <div><span class="label">Meta</span><div class="mono">R$ ${metrics.profitTarget?.toFixed(2) || '--'}</div></div>
+        <div><span class="label">Limite Perda</span><div class="mono">R$ ${metrics.lossLimit?.toFixed(2) || '--'}</div></div>
       </div>
       <div class="grid-3 mt-8">
         <div><span class="label">Profit Factor</span><div class="mono ${metrics.profitFactor >= 1.8 ? 'hl-green' : 'hl-yellow'}">${metrics.profitFactor.toFixed(2)}</div></div>
@@ -1514,7 +1541,7 @@ async function runBacktest() {
   renderBTHistory();
 }
 
-function runStrategy(data, strategy) {
+function runStrategy(data, strategy, capital, maxTrades, profitTarget, lossLimit) {
   const trades = [];
   const closes = data.map(d => d.c);
   const highs = data.map(d => d.h);
@@ -1525,6 +1552,16 @@ function runStrategy(data, strategy) {
   const atr = calcATR(highs, lows, closes, 14);
 
   let position = null;
+  let runningPnl = 0;
+  let stoppedBy = null;
+
+  for (let i = 50; i < data.length; i++) {
+    // === LIMITS CHECK ===
+    if (trades.length >= maxTrades) { stoppedBy = 'max_trades'; break; }
+
+    const runningCapital = capital + runningPnl;
+    if (runningCapital <= lossLimit) { stoppedBy = 'loss_limit'; break; }
+    if (runningPnl >= profitTarget) { stoppedBy = 'profit_target'; break; }
 
   for (let i = 50; i < data.length; i++) {
     if (sma20[i] === null || sma50[i] === null || !rsi[i] || !atr[i]) continue;
@@ -1565,15 +1602,22 @@ function runStrategy(data, strategy) {
 
       if (exitPrice) {
         const pts = position.type === 'buy' ? exitPrice - position.entry : position.entry - exitPrice;
+        const pnlR = pts * 0.2;
+        runningPnl += pnlR;
         trades.push({
           date: data[i].t,
           type: position.type,
           entry: position.entry,
           exit: exitPrice,
           pts,
+          pnl: pnlR,
           result: exitType === 'tp' ? 'win' : 'loss',
         });
         position = null;
+
+        // Re-check limits after trade
+        if (runningPnl >= profitTarget) { stoppedBy = 'profit_target'; break; }
+        if (capital + runningPnl <= lossLimit) { stoppedBy = 'loss_limit'; break; }
       }
     }
 
@@ -1590,10 +1634,30 @@ function runStrategy(data, strategy) {
     }
   }
 
-  return trades;
+  // Close any open position at end
+  if (position) {
+    const lastPrice = closes[closes.length - 1];
+    const pts = position.type === 'buy' ? lastPrice - position.entry : position.entry - lastPrice;
+    const pnlR = pts * 0.2;
+    runningPnl += pnlR;
+    trades.push({
+      date: data[data.length - 1].t,
+      type: position.type,
+      entry: position.entry,
+      exit: lastPrice,
+      pts,
+      pnl: pnlR,
+      result: pts > 0 ? 'win' : 'loss',
+    });
+  }
+
+  return { trades, stoppedBy, runningPnl };
 }
 
-function calculateMetrics(trades, capital) {
+function calculateMetrics(result, capital, profitTarget, lossLimit) {
+  const trades = Array.isArray(result) ? result : result.trades;
+  const stoppedBy = result.stoppedBy || null;
+  const runningPnl = result.runningPnl || 0;
   let equity = capital;
   let peak = capital;
   let maxDD = 0;
@@ -1633,6 +1697,10 @@ function calculateMetrics(trades, capital) {
     avgWin,
     avgLoss,
     expectancy: trades.length > 0 ? (equity - capital) / trades.length : 0,
+    stoppedBy,
+    profitTarget,
+    lossLimit,
+    runningPnl,
   };
 }
 
