@@ -814,48 +814,28 @@ function initTradingView() {
 async function fetchYahooData() {
   const status = document.getElementById('yh-status');
   const panel = document.getElementById('yh-data');
-  status.innerHTML = '<div class="spinner"></div> Conectando Yahoo Finance...';
+  status.innerHTML = '<div class="spinner"></div> Carregando dados locais...';
   panel.style.display = 'none';
 
-  const yahooPath = `/v8/finance/chart/${encodeURIComponent(STATE.yhSymbol)}?range=5d&interval=5m`;
-  const fetchUrl = `/api/yahoo?url=${encodeURIComponent(yahooPath)}`;
-  
+  // Try local data first (works on Railway, instant)
   try {
-    const resp = await fetch(fetchUrl);
-    const json = await resp.json();
-    if (!json.chart?.result?.[0]) throw new Error('Sem dados');
-    
-    const r = json.chart.result[0];
-    const meta = r.meta;
-    const quotes = r.indicators.quote[0];
-    const timestamps = r.timestamp;
-    
-    // Build OHLCV array
-    STATE.ohlcData = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (quotes.open[i] !== null) {
-        STATE.ohlcData.push({
-          t: new Date(timestamps[i] * 1000),
-          o: quotes.open[i],
-          h: quotes.high[i],
-          l: quotes.low[i],
-          c: quotes.close[i],
-          v: quotes.volume[i] || 0,
-        });
-      }
-    }
+    const resp = await fetch('/api/data/M5');
+    if (!resp.ok) throw new Error('No local data');
+    STATE.ohlcData = await resp.json();
+    if (!Array.isArray(STATE.ohlcData) || STATE.ohlcData.length < 10) throw new Error('Insufficient');
 
-    // Calculate indicators
     calculateAllIndicators();
-
-    // Update UI
-    const last = STATE.ohlcData[STATE.ohlcData.length - 1];
-    const prev = STATE.ohlcData[STATE.ohlcData.length - 2];
+    const data = STATE.ohlcData;
+    const last = data[data.length - 1];
+    const prev = data[data.length - 2];
     const change = prev ? last.c - prev.c : 0;
     const changePct = prev ? ((change / prev.c) * 100) : 0;
-    const dayHigh = Math.max(...STATE.ohlcData.slice(-80).map(d => d.h));
-    const dayLow = Math.min(...STATE.ohlcData.slice(-80).map(d => d.l));
-    const totalVol = STATE.ohlcData.slice(-80).reduce((s, d) => s + d.v, 0);
+
+    // Recent day range
+    const dayData = data.filter(c => new Date(c.t).toDateString() === new Date(last.t).toDateString());
+    const dayHigh = dayData.length > 0 ? Math.max(...dayData.map(d => d.h)) : last.h;
+    const dayLow = dayData.length > 0 ? Math.min(...dayData.map(d => d.l)) : last.l;
+    const totalVol = data.slice(-80).reduce((s, d) => s + (d.v||0), 0);
 
     document.getElementById('live-price').textContent = last.c.toLocaleString('pt-BR');
     document.getElementById('live-price').className = 'price-badge ' + (change >= 0 ? 'price-up' : 'price-down');
@@ -863,33 +843,31 @@ async function fetchYahooData() {
     document.getElementById('live-change-pct').textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
     document.getElementById('live-high').textContent = dayHigh.toFixed(0);
     document.getElementById('live-low').textContent = dayLow.toFixed(0);
-    document.getElementById('live-vol').textContent = totalVol > 1000 ? (totalVol/1000).toFixed(0)+'K' : totalVol;
+    document.getElementById('live-vol').textContent = totalVol > 1000 ? (totalVol/1000).toFixed(0)+'K' : '--';
 
     if (STATE.indicators.atr) {
       document.getElementById('live-atr').textContent = STATE.indicators.atr.at(-1).toFixed(0);
-      document.getElementById('sim-stop-atr-mult').dataset.atrVal = STATE.indicators.atr.at(-1).toFixed(0);
     }
 
-    status.innerHTML = `✅ Dados: ${meta.regularMarketPrice?.toLocaleString('pt-BR') || last.c.toLocaleString('pt-BR')} | ${STATE.ohlcData.length} candles carregados`;
+    status.innerHTML = `📁 Dados locais: ${last.c.toLocaleString('pt-BR')} | ${data.length} candles`;
     panel.style.display = 'block';
 
-    // Build cards
-    const cards = document.getElementById('yh-cards');
-    cards.innerHTML = `
-      <div class="card"><div class="card-title">Abertura</div><div class="mono" style="font-size:14px;">${meta.regularMarketOpen?.toLocaleString('pt-BR') || '--'}</div></div>
-      <div class="card"><div class="card-title">Fechamento</div><div class="mono" style="font-size:14px;">${meta.regularMarketPrice?.toLocaleString('pt-BR') || '--'}</div></div>
-      <div class="card"><div class="card-title">Máxima 52s</div><div class="mono" style="font-size:14px;">${meta.fiftyTwoWeekHigh?.toLocaleString('pt-BR') || '--'}</div></div>
-      <div class="card"><div class="card-title">Mínima 52s</div><div class="mono" style="font-size:14px;">${meta.fiftyTwoWeekLow?.toLocaleString('pt-BR') || '--'}</div></div>
+    const yhCards = document.getElementById('yh-cards');
+    yhCards.innerHTML = `
+      <div class="card"><div class="card-title">Último Fechamento</div><div class="mono" style="font-size:14px;">${last.c.toLocaleString('pt-BR')}</div></div>
+      <div class="card"><div class="card-title">Máxima (dia)</div><div class="mono" style="font-size:14px;">${dayHigh.toFixed(0)}</div></div>
+      <div class="card"><div class="card-title">Mínima (dia)</div><div class="mono" style="font-size:14px;">${dayLow.toFixed(0)}</div></div>
+      <div class="card"><div class="card-title">Candles (M5)</div><div class="mono" style="font-size:14px;">${data.length}</div></div>
     `;
 
     renderIndicators();
     renderLevels();
     renderMTFPanel();
     updateRiskPanel();
-
   } catch (e) {
-    status.innerHTML = `⚠️ Yahoo indisponível (${e.message}). Use CSV ou ajuste o símbolo em Config. O gráfico TradingView segue funcional.`;
+    status.innerHTML = `⚠️ Dados locais indisponíveis. Execute o Estudo primeiro.`;
     panel.style.display = 'none';
+    console.log('[fetchData] Local data error:', e.message);
   }
 }
 
