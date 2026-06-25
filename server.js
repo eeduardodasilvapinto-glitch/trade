@@ -24,13 +24,32 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 const YH_SYMBOL = process.env.YH_SYMBOL || '^BVSP';
 
+const SEED_DIR = path.join(__dirname, 'seed-data');
+
 console.log(`[Config] DATA_DIR = ${DATA_DIR}`);
 console.log(`[Config] YH_SYMBOL = ${YH_SYMBOL}`);
 
 // Ensure data dir
 try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true }); } catch(e) {
   console.error('[Config] Cannot create DATA_DIR:', e.message);
-  console.error('[Config] Path:', DATA_DIR);
+}
+
+// Seed data from built-in files if volume is empty (first deploy)
+try {
+  if (fs.existsSync(SEED_DIR)) {
+    const existing = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+    if (existing.length === 0) {
+      console.log('[Seed] Volume vazio, copiando dados padrao...');
+      for (const f of fs.readdirSync(SEED_DIR).filter(f => f.endsWith('.json'))) {
+        fs.copyFileSync(path.join(SEED_DIR, f), path.join(DATA_DIR, f));
+        console.log(`[Seed] ${f} copiado`);
+      }
+    } else {
+      console.log(`[Seed] Volume ja possui ${existing.length} arquivos`);
+    }
+  }
+} catch(e) {
+  console.error('[Seed] Error:', e.message);
 }
 
 // ============================================================================
