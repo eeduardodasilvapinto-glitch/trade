@@ -30,18 +30,31 @@ console.log(`[Config] DATA_DIR = ${DATA_DIR}`);
 console.log(`[Config] YH_SYMBOL = ${YH_SYMBOL}`);
 
 // Ensure data dir
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true }); } catch(e) {
+  console.error('[Config] Cannot create DATA_DIR:', e.message);
+  console.error('[Config] Path:', DATA_DIR);
+}
 
 // ============================================================================
-// PATTERN ENGINE
+// PATTERN ENGINE — Safe load (don't crash server if missing)
 // ============================================================================
-const candlestick = require('./engine/patterns/candlestick');
-const chart = require('./engine/patterns/chart');
-const harmonic = require('./engine/patterns/harmonic');
-const liquidity = require('./engine/patterns/liquidity');
-const volume = require('./engine/patterns/volume');
-const wyckoff = require('./engine/patterns/wyckoff');
-const scanner = require('./engine/scanner');
+let candlestick, chart, harmonic, liquidity, volume, wyckoff, scanner;
+let engineReady = false;
+
+try {
+  candlestick = require('./engine/patterns/candlestick');
+  chart = require('./engine/patterns/chart');
+  harmonic = require('./engine/patterns/harmonic');
+  liquidity = require('./engine/patterns/liquidity');
+  volume = require('./engine/patterns/volume');
+  wyckoff = require('./engine/patterns/wyckoff');
+  scanner = require('./engine/scanner');
+  engineReady = true;
+  console.log('[Engine] Pattern detectors loaded successfully');
+} catch (e) {
+  console.error('[Engine] Failed to load pattern detectors:', e.message);
+  console.error('[Engine] Server will run without pattern detection');
+}
 
 // ============================================================================
 // GLOBAL STATE
@@ -161,7 +174,7 @@ function fetchYahoo(tf, interval, range) {
 // INCREMENTAL SCAN — Only scans new candles
 // ============================================================================
 function scanIncremental(tf, newCandles, fullData) {
-  if (!newCandles || newCandles.length === 0) return [];
+  if (!engineReady || !newCandles || newCandles.length === 0) return [];
 
   const results = [];
   const dataStart = Math.max(0, fullData.length - 60);
@@ -216,6 +229,11 @@ function scanIncremental(tf, newCandles, fullData) {
 // FULL STUDY — Runs complete scan on all timeframes
 // ============================================================================
 async function runFullStudy() {
+  if (!engineReady) {
+    console.log('[Study] Engine not loaded, skipping');
+    broadcast({ type: 'study_error', message: 'Pattern engine not available' });
+    return;
+  }
   if (state.isScanning) {
     console.log('[Study] Já está escaneando, ignorando...');
     return;
@@ -514,21 +532,27 @@ app.get('/api/scan/:file', (req, res) => {
 // CRON JOBS
 // ============================================================================
 
-// Live polling during market hours (every 2 minutes)
-cron.schedule('*/2 12-21 * * 1-5', () => {
-  livePoll().catch(console.error);
-}, { timezone: 'America/Sao_Paulo' });
+try {
+  // Live polling during market hours (every 2 minutes)
+  cron.schedule('*/2 12-21 * * 1-5', () => {
+    livePoll().catch(console.error);
+  }, { timezone: 'America/Sao_Paulo' });
 
-// Full study: 3x per day (after market close, overnight)
-cron.schedule('0 19 * * 1-5', () => {
-  console.log('[Cron] Estudo pós-mercado programado');
-  runFullStudy().catch(console.error);
-}, { timezone: 'America/Sao_Paulo' });
+  // Full study: after market close + overnight
+  cron.schedule('0 19 * * 1-5', () => {
+    console.log('[Cron] Estudo pós-mercado programado');
+    runFullStudy().catch(console.error);
+  }, { timezone: 'America/Sao_Paulo' });
 
-cron.schedule('0 2 * * *', () => {
-  console.log('[Cron] Estudo noturno programado');
-  runFullStudy().catch(console.error);
-}, { timezone: 'America/Sao_Paulo' });
+  cron.schedule('0 2 * * *', () => {
+    console.log('[Cron] Estudo noturno programado');
+    runFullStudy().catch(console.error);
+  }, { timezone: 'America/Sao_Paulo' });
+
+  console.log('[Cron] Jobs agendados');
+} catch(e) {
+  console.error('[Cron] Failed to schedule jobs:', e.message);
+}
 
 // ============================================================================
 // STARTUP
