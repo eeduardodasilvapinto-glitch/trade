@@ -510,6 +510,12 @@ app.get('/api/alerts', (req, res) => {
   res.json(state.alerts.slice(-50));
 });
 
+// API: AI insights history
+app.get('/api/ai/insights', (req, res) => {
+  if (!state.aiWorker || !state.aiWorker.insights) return res.json([]);
+  res.json(state.aiWorker.insights.slice(-30));
+});
+
 // API: Trigger study
 app.post('/api/study', (req, res) => {
   res.json({ status: 'started', message: 'Estudo iniciado em background' });
@@ -715,6 +721,13 @@ server.listen(PORT, HOST, () => {
 
   // Run first live poll
   setTimeout(() => livePoll().catch(console.error), 3000);
+
+  // Start AI Worker (24/7 analysis)
+  const { AIWorker } = require('./engine/ai-worker');
+  const aiWorker = new AIWorker(broadcast, DATA_DIR);
+  state.aiWorker = aiWorker;
+  aiWorker.start();
+  console.log('🤖 AI Worker iniciado');
 });
 
 // Graceful shutdown

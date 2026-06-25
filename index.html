@@ -2013,6 +2013,42 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// AI real-time card display
+function showAICard(data) {
+  const panel = document.getElementById('ai-response');
+  if (!panel) return;
+
+  const sessionLabel = data.session === 'market' ? '🟢 Mercado Aberto' :
+                       data.session === 'study' ? '🌙 Estudo' : '📊 Deep Report';
+  const focusLabel = data.focus ? ` | Foco: ${data.focus}` : '';
+
+  panel.innerHTML = `
+    <div class="card" style="padding:10px; font-size:11px; white-space:pre-wrap; line-height:1.5; border-left:3px solid var(--blue);">
+      <div style="color:var(--blue); font-weight:600; margin-bottom:4px;">${sessionLabel}${focusLabel}</div>
+      ${escapeHtml(data.content)}
+      <div class="text-xs" style="color:var(--text2); margin-top:6px;">${new Date(data.timestamp).toLocaleTimeString('pt-BR')}</div>
+    </div>
+  `;
+
+  // Also show as toast for market insights
+  if (data.session === 'market') {
+    const container = document.getElementById('alerts-toast');
+    if (container) {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        background: var(--bg3); border: 1px solid var(--blue);
+        border-left: 4px solid var(--blue);
+        border-radius: 6px; padding: 10px 12px; margin-bottom: 6px;
+        font-size: 11px; animation: slideIn 0.3s ease; cursor: pointer;
+      `;
+      toast.innerHTML = `<div style="font-weight:600;">🤖 Análise IA</div><div style="color:var(--text2); margin-top:4px; max-height:80px; overflow-y:auto;">${escapeHtml(data.content).substring(0, 200)}</div>`;
+      toast.onclick = () => toast.remove();
+      container.prepend(toast);
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 12000);
+    }
+  }
+}
+
 // === CSV IMPORT ===
 function importCSV(input) {
   const file = input.files[0];
@@ -2088,6 +2124,12 @@ function connectWebSocket() {
             document.getElementById('ws-status').innerHTML = '🔴 Mercado Fechado';
             document.getElementById('ws-status').style.color = 'var(--text2)';
           }
+          break;
+        case 'ai_insight':
+          showAICard(data);
+          break;
+        case 'ai_deep_report':
+          showAICard({ ...data, session: 'deep', content: '📋 RELATÓRIO PROFUNDO\n\n' + data.content });
           break;
       }
     };
