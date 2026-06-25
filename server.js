@@ -537,6 +537,45 @@ app.post('/api/livepoll', async (req, res) => {
   await livePoll();
 });
 
+// API: Debug/Seed — force seed from built-in data
+app.get('/api/debug', (req, res) => {
+  const info = {
+    DATA_DIR,
+    SEED_DIR,
+    dataExists: fs.existsSync(DATA_DIR),
+    seedExists: fs.existsSync(SEED_DIR),
+  };
+  if (info.dataExists) info.dataFiles = fs.readdirSync(DATA_DIR);
+  if (info.seedExists) info.seedFiles = fs.readdirSync(SEED_DIR);
+  res.json(info);
+});
+
+// API: Force seed manually
+app.post('/api/seed', (req, res) => {
+  if (!fs.existsSync(SEED_DIR)) return res.status(404).json({ error: 'seed-data/ not found' });
+  try {
+    for (const f of fs.readdirSync(SEED_DIR).filter(f => f.endsWith('.json'))) {
+      fs.copyFileSync(path.join(SEED_DIR, f), path.join(DATA_DIR, f));
+    }
+    const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+    if (engineReady && scanner) {
+      // Load data into memory
+      for (const f of files) {
+        const tf = f.replace('ohlcv_', '').replace('.json', '');
+        state.ohlcData[tf] = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf-8'));
+      }
+      // Load stats
+      try {
+        state.patternStats = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'pattern_stats.json'), 'utf-8'));
+        state.learningReport = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'learning_report.json'), 'utf-8'));
+      } catch(e) {}
+    }
+    res.json({ ok: true, files, dataTimeframes: Object.keys(state.ohlcData) });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Specific scan file
 app.get('/api/scan/:file', (req, res) => {
   const filePath = path.join(DATA_DIR, req.params.file);
