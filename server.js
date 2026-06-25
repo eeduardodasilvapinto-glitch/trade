@@ -516,6 +516,59 @@ app.post('/api/study', (req, res) => {
   runFullStudy().catch(console.error);
 });
 
+// API: AI Analysis via OpenRouter (free models)
+app.post('/api/ai/analyze', express.json(), async (req, res) => {
+  const apiKey = process.env.OPENROUTER_KEY || req.body.apiKey;
+  if (!apiKey) return res.status(400).json({ error: 'OpenRouter API key required. Set OPENROUTER_KEY env var or pass apiKey in body.' });
+
+  const { prompt, pattern, stats, context } = req.body;
+  const model = req.body.model || 'google/gemini-2.5-flash-lite-preview-06-20:free';
+
+  const messages = [
+    { role: 'system', content: 'Você é um trader quantitativo profissional brasileiro especializado em WINFUT (Mini Índice B3). Analise padrões técnicos e forneça recomendações objetivas. Responda em português, seja conciso. Foque em: probabilidade de acerto, gestão de risco, e contexto de mercado.' },
+  ];
+
+  if (prompt) {
+    messages.push({ role: 'user', content: prompt });
+  } else if (pattern && stats) {
+    messages.push({ role: 'user', content: `Analise este padrão detectado no WINFUT:\n\nPadrão: ${pattern}\nEstatísticas: ${JSON.stringify(stats)}\nContexto: ${context || 'Não fornecido'}\n\nForneça: 1) Probabilidade de acerto estimada 2) Se vale a pena operar (Sim/Não) 3) Sugestão de stop e alvo 4) Uma frase de justificativa.` });
+  } else {
+    return res.status(400).json({ error: 'Provide prompt or pattern+stats' });
+  }
+
+  try {
+    const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: 400,
+        temperature: 0.3,
+      }),
+    });
+
+    const data = await resp.json();
+    if (data.error) return res.status(500).json({ error: data.error.message || data.error });
+    res.json({ model, content: data.choices?.[0]?.message?.content || '', usage: data.usage });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
+// API: List free OpenRouter models
+app.get('/api/ai/models', (req, res) => {
+  res.json({
+    free_models: [
+      { id: 'google/gemini-2.5-flash-lite-preview-06-20:free', provider: 'Google', name: 'Gemini 2.5 Flash Lite' },
+      { id: 'google/gemini-2.0-flash-exp:free', provider: 'Google', name: 'Gemini 2.0 Flash' },
+      { id: 'meta-llama/llama-3.2-3b-instruct:free', provider: 'Meta', name: 'Llama 3.2 3B' },
+      { id: 'mistralai/mistral-small-3.1-24b-instruct:free', provider: 'Mistral', name: 'Mistral Small 3.1 24B' },
+    ],
+    note: 'Free models have rate limits. Get your API key at https://openrouter.ai/keys',
+  });
+});
+
 // API: Status
 app.get('/api/status', (req, res) => {
   res.json({

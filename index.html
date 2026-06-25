@@ -638,6 +638,20 @@ tr:hover { background: var(--bg3); }
 
         <h3 style="margin-top:12px;">📊 Por Timeframe</h3>
         <div id="estudo-by-tf"></div>
+
+        <h3 style="margin-top:12px;">🤖 IA — Análise Inteligente</h3>
+        <div id="ai-panel">
+          <div class="card" style="padding:8px;">
+            <div class="form-group"><label>Prompt ou análise automática</label><textarea id="ai-prompt" rows="2" placeholder="Ex: Analise os top 5 padrões e recomende o melhor para day trade..." style="font-size:11px;"></textarea></div>
+            <div style="display:flex; gap:4px; margin-top:4px;">
+              <button class="btn btn-blue btn-sm" onclick="askAI()" style="flex:1;">🤖 Analisar</button>
+              <button class="btn btn-outline btn-sm" onclick="askAIPatterns()">📊 Top Padrões</button>
+            </div>
+          </div>
+          <div id="ai-response" style="margin-top:6px; font-size:11px;">
+            <span style="color:var(--text2);">Configure a chave API em ⚙️ Config para ativar.</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -660,8 +674,19 @@ tr:hover { background: var(--bg3); }
         <div class="form-group"><label>Yahoo Finance Symbol</label><input id="cfg-yh-symbol" value="^BVSP" placeholder="^BVSP"></div>
         <div class="form-group"><label>TradingView Symbol</label><input id="cfg-tv-symbol" value="BMFBOVESPA:WIN1!" placeholder="BMFBOVESPA:WIN1!"></div>
         <p class="text-xs" style="color:var(--text2); margin-top:4px;">
-          ^BVSP = Ibovespa spot. Para futuros tente WIN%3DF no Yahoo. Ajuste conforme necessário.
+          ^BVSP = Ibovespa spot. Para futuros tente WIN%3DF no Yahoo.
         </p>
+      </div>
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-title">🤖 OpenRouter AI</div>
+        <div class="form-group"><label>API Key (grátis em <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--blue);">openrouter.ai/keys</a>)</label><input id="cfg-openrouter-key" type="password" placeholder="sk-or-v1-..."></div>
+        <div class="form-group"><label>Modelo</label><select id="cfg-ai-model">
+          <option value="google/gemini-2.5-flash-lite-preview-06-20:free">Gemini 2.5 Flash Lite (grátis)</option>
+          <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash (grátis)</option>
+          <option value="meta-llama/llama-3.2-3b-instruct:free">Llama 3.2 3B (grátis)</option>
+          <option value="mistralai/mistral-small-3.1-24b-instruct:free">Mistral Small 3.1 24B (grátis)</option>
+        </select></div>
+        <p class="text-xs" style="color:var(--text2);">Modelos gratuitos via OpenRouter. Sem custo, mas com rate limit.</p>
       </div>
       <div class="card" style="margin-bottom:12px;">
         <div class="card-title">📥 Importar Dados CSV</div>
@@ -1757,6 +1782,10 @@ function saveConfig() {
     tvSymbol: STATE.tvSymbol,
   }));
 
+  // Save AI key separately
+  const aiKey = document.getElementById('cfg-openrouter-key')?.value || '';
+  if (aiKey) localStorage.setItem('winfut_ai_key', aiKey);
+
   document.getElementById('bt-capital').value = STATE.capital;
   document.getElementById('bt-risk').value = STATE.riskPerTrade;
   updateRiskPanel();
@@ -1928,6 +1957,62 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+// === AI ANALYSIS ===
+function getAIKey() {
+  return document.getElementById('cfg-openrouter-key')?.value || localStorage.getItem('winfut_ai_key') || '';
+}
+function getAIModel() {
+  return document.getElementById('cfg-ai-model')?.value || 'google/gemini-2.5-flash-lite-preview-06-20:free';
+}
+
+async function askAI() {
+  const key = getAIKey();
+  if (!key) { alert('Configure a API Key do OpenRouter em Config'); return; }
+
+  const prompt = document.getElementById('ai-prompt')?.value;
+  const responseEl = document.getElementById('ai-response');
+  if (!responseEl) return;
+  responseEl.innerHTML = '<div class="spinner"></div> Consultando IA...';
+
+  try {
+    const resp = await fetch('/api/ai/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: key, prompt, model: getAIModel() }),
+    });
+    const data = await resp.json();
+    if (data.error) { responseEl.innerHTML = `<span class="hl-red">Erro: ${data.error}</span>`; return; }
+    responseEl.innerHTML = `<div class="card" style="padding:10px; font-size:11px; white-space:pre-wrap; line-height:1.5;">${escapeHtml(data.content)}<div class="text-xs" style="color:var(--text2); margin-top:4px;">Modelo: ${data.model} | Tokens: ${data.usage?.total_tokens || '--'}</div></div>`;
+  } catch(e) {
+    responseEl.innerHTML = `<span class="hl-red">Erro: ${e.message}</span>`;
+  }
+}
+
+async function askAIPatterns() {
+  const key = getAIKey();
+  if (!key) { alert('Configure a API Key do OpenRouter em Config'); return; }
+  if (Object.keys(estadoStats).length === 0) { alert('Carregue dados do Estudo primeiro'); return; }
+
+  const ranked = Object.values(estadoStats)
+    .filter(p => p.occurrences >= 5 && p.winRate_5 > 0)
+    .sort((a, b) => (b.winRate_5 || 0) * (b.profitFactor_5 || 1) - (a.winRate_5 || 0) * (a.profitFactor_5 || 1))
+    .slice(0, 5);
+
+  const topPatterns = ranked.map(p =>
+    `${p.pattern} [${p.timeframe}]: WR ${p.winRate_5?.toFixed(1)}%, PF ${p.profitFactor_5?.toFixed(2)}, N=${p.occurrences}, Dir=${p.direction}`
+  ).join('\n');
+
+  const prompt = `Analise estes 5 melhores padroes detectados no WINFUT (Mini Indice B3) e recomende o MELHOR para day trade:\n\n${topPatterns}\n\nResponda: 1) Qual o melhor padrao e por que 2) Em qual timeframe operar 3) Sugestao de gestao (stop/alvo) 4) Uma frase de alerta/risco.`;
+  document.getElementById('ai-prompt').value = prompt;
+  await askAI();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
 // === CSV IMPORT ===
 function importCSV(input) {
   const file = input.files[0];
@@ -2072,6 +2157,13 @@ document.head.appendChild(style);
   const simDh = document.getElementById('sim-datahora');
   if (simDh) simDh.value = new Date().toISOString().slice(0, 16);
   connectWebSocket();
+
+  // Load saved AI key
+  const savedAIKey = localStorage.getItem('winfut_ai_key') || '';
+  if (savedAIKey) {
+    const el = document.getElementById('cfg-openrouter-key');
+    if (el) el.value = savedAIKey;
+  }
 })();
 </script>
 </body>
