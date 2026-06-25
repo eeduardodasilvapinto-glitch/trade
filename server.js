@@ -19,9 +19,15 @@ const wss = new WebSocketServer({ server });
 // CONFIG
 // ============================================================================
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';  // Railway-friendly
-const DATA_DIR = path.join(__dirname, 'data');
+const HOST = process.env.HOST || '0.0.0.0';
+// Use Railway volume mount path if available, otherwise local ./data
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'data')
+  : path.join(__dirname, 'data');
 const YH_SYMBOL = process.env.YH_SYMBOL || '^BVSP';
+
+console.log(`[Config] DATA_DIR = ${DATA_DIR}`);
+console.log(`[Config] YH_SYMBOL = ${YH_SYMBOL}`);
 
 // Ensure data dir
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
