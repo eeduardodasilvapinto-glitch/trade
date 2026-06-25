@@ -1566,7 +1566,6 @@ function runStrategy(data, strategy, capital, maxTrades, profitTarget, lossLimit
     if (runningCapital <= lossLimit) { stoppedBy = 'loss_limit'; break; }
     if (runningPnl >= profitTarget) { stoppedBy = 'profit_target'; break; }
 
-  for (let i = 50; i < data.length; i++) {
     if (sma20[i] === null || sma50[i] === null || !rsi[i] || !atr[i]) continue;
 
     let signal = null;
@@ -2184,7 +2183,7 @@ document.head.appendChild(style);
     const el = document.getElementById('cfg-openrouter-key');
     if (el) el.value = savedAIKey;
   }
-})();
+});
 </script>
 </body>
 </html>
