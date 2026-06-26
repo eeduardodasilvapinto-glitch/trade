@@ -24,230 +24,170 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
-  height: 100vh;
+  height: 100vh; width: 100vw;
   overflow: hidden;
+  display: flex; flex-direction: column;
 }
 /* === HEADER === */
 .header {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
-  padding: 8px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  flex-shrink: 0;
+  padding: 6px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 4px;
+  min-height: 44px; flex-shrink: 0;
 }
-.header-left { display: flex; align-items: center; gap: 12px; }
-.header-left h1 { font-size: 18px; font-weight: 700; color: var(--green); }
-.header-left .symbol { font-size: 12px; color: var(--text2); }
+.header-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.header-left h1 { font-size: 16px; font-weight: 700; color: var(--green); white-space: nowrap; }
+.header-left .symbol { font-size: 11px; color: var(--text2); }
 .price-badge {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-size: 20px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 5px; padding: 3px 10px;
+  font-size: 16px; font-weight: 700;
+  font-family: 'Cascadia Code', monospace;
+  white-space: nowrap;
 }
 .price-up { color: var(--green); }
 .price-down { color: var(--red); }
-.header-stats { display: flex; gap: 20px; font-size: 12px; }
-.header-stats span { color: var(--text2); }
+.header-stats { display: flex; gap: 10px; font-size: 11px; flex-wrap: wrap; }
+.header-stats > div { white-space: nowrap; }
+.header-stats .label { color: var(--text2); font-size: 10px; }
 .header-stats .val { color: var(--text); font-weight: 600; }
+.header-stats #ws-status { font-size: 10px; min-width: 60px; }
+
 /* === TABS === */
 .tabs {
-  display: flex;
+  display: flex; flex-wrap: wrap;
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .tab-btn {
-  padding: 10px 20px;
-  background: none;
-  border: none;
-  color: var(--text2);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 8px 14px; background: none; border: none;
+  color: var(--text2); cursor: pointer;
+  font-size: 12px; font-weight: 500;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+
 /* === MAIN CONTENT === */
 .main-content {
-  display: flex;
-  height: calc(100vh - 48px - 40px);
-  overflow: hidden;
+  flex: 1; display: flex; overflow: hidden;
+  min-height: 0;
 }
-.tab-content { display: none; flex: 1; overflow-y: auto; }
+.tab-content { display: none; flex: 1; overflow: hidden; }
 .tab-content.active { display: flex; flex-direction: column; }
+.tab-panel-inner { flex: 1; display: flex; overflow: hidden; }
+
 /* === SIDEBAR === */
 .sidebar {
-  width: 350px;
+  width: 320px; max-width: 40vw;
   background: var(--bg2);
   border-left: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 12px;
-  flex-shrink: 0;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 10px; flex-shrink: 0;
 }
 .sidebar h3 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text2);
-  margin-bottom: 10px;
-  padding-bottom: 6px;
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text2);
+  margin-bottom: 8px; padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
 }
+
 /* === CARDS === */
 .card {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 10px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px; margin-bottom: 8px;
 }
-.card-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text2);
-  margin-bottom: 6px;
-}
-.card-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 2px 0;
-  font-size: 12px;
-}
+.card-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 4px; }
+.card-row { display: flex; justify-content: space-between; padding: 1px 0; font-size: 11px; }
 .card-row .label { color: var(--text2); }
-.card-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.card-row .value { font-weight: 600; font-family: 'Cascadia Code', monospace; font-size: 11px; }
+
 /* === GRID === */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; }
+
 /* === INPUTS === */
 input, select, textarea {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  padding: 6px 10px;
-  font-size: 12px;
-  font-family: inherit;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text);
+  padding: 5px 8px; font-size: 11px; font-family: inherit;
   width: 100%;
 }
-input:focus, select:focus, textarea:focus {
-  outline: none;
-  border-color: var(--blue);
-}
-label {
-  font-size: 11px;
-  color: var(--text2);
-  display: block;
-  margin-bottom: 2px;
-}
-.form-group { margin-bottom: 8px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); }
+label { font-size: 10px; color: var(--text2); display: block; margin-bottom: 1px; }
+.form-group { margin-bottom: 6px; }
+
+/* === BUTTONS === */
 .btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.2s;
+  padding: 6px 12px; border: none; border-radius: 5px;
+  cursor: pointer; font-size: 11px; font-weight: 600;
+  transition: all 0.2s; white-space: nowrap;
 }
 .btn-green { background: var(--green); color: #000; }
 .btn-red { background: var(--red); color: #fff; }
 .btn-blue { background: var(--blue); color: #000; }
 .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
 .btn:hover { opacity: 0.85; }
-.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-sm { padding: 4px 8px; font-size: 10px; }
+
 /* === TABLE === */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-th, td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-th { color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+table { width: 100%; border-collapse: collapse; font-size: 10px; }
+th, td { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+th { color: var(--text2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; }
 tr:hover { background: var(--bg3); }
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-}
+
+/* === MISC === */
+.badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 600; }
 .badge-win { background: rgba(63,185,80,0.2); color: var(--green); }
 .badge-loss { background: rgba(248,81,73,0.2); color: var(--red); }
 .badge-neutral { background: rgba(139,148,158,0.2); color: var(--text2); }
-/* === CHART CONTAINER === */
-#tv-chart { flex: 1; min-height: 400px; }
-.chart-area { flex: 1; display: flex; flex-direction: column; padding: 8px; }
-/* === METRICS BARS === */
-.metric-bar {
-  height: 6px;
-  background: var(--bg);
-  border-radius: 3px;
-  margin-top: 4px;
-  overflow: hidden;
-}
-.metric-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-.fill-green { background: var(--green); }
-.fill-red { background: var(--red); }
-.fill-blue { background: var(--blue); }
-.fill-yellow { background: var(--yellow); }
-/* === ALERTS === */
-.alert {
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  margin-bottom: 8px;
-}
-.alert-danger { background: rgba(248,81,73,0.15); border: 1px solid rgba(248,81,73,0.3); color: var(--red); }
-.alert-success { background: rgba(63,185,80,0.15); border: 1px solid rgba(63,185,80,0.3); color: var(--green); }
-.alert-info { background: rgba(88,166,255,0.15); border: 1px solid rgba(88,166,255,0.3); color: var(--blue); }
-/* === SCROLLBAR === */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-/* === LOADING === */
-.loading { text-align: center; padding: 40px; color: var(--text2); }
-.spinner {
-  display: inline-block;
-  width: 30px; height: 30px;
-  border: 3px solid var(--border);
-  border-top-color: var(--blue);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-/* === HIGHLIGHTS === */
+
 .hl-green { color: var(--green); }
 .hl-red { color: var(--red); }
 .hl-blue { color: var(--blue); }
 .hl-yellow { color: var(--yellow); }
-.mono { font-family: 'Cascadia Code', 'Fira Code', monospace; }
-.text-sm { font-size: 11px; }
+.mono { font-family: 'Cascadia Code', monospace; }
 .text-xs { font-size: 10px; }
+.text-sm { font-size: 11px; }
 .mt-8 { margin-top: 8px; }
 .mb-8 { margin-bottom: 8px; }
 .flex-between { display: flex; justify-content: space-between; align-items: center; }
 .gap-8 { gap: 8px; }
-/* Responsive */
-@media (max-width: 900px) { .sidebar { display: none; } }
+
+/* === CHART AREA === */
+.chart-area { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+.chart-area canvas, .chart-area #tv-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart-area canvas { z-index: 1; }
+.chart-area #tv-chart { z-index: 2; }
+
+/* === SCROLLABLE PANELS === */
+.scroll-y { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px; min-width: 0; }
+
+/* === ALERTS TOAST === */
+#alerts-toast { position: fixed; top: 50px; right: 8px; z-index: 9999; max-width: 300px; }
+
+/* === RESPONSIVE === */
+@media (max-width: 900px) {
+  .sidebar { width: 280px; max-width: 45vw; padding: 8px; }
+  .header-left h1 { font-size: 14px; }
+  .price-badge { font-size: 14px; padding: 2px 8px; }
+  .tab-btn { padding: 6px 10px; font-size: 11px; }
+  .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
+  .header-stats { gap: 6px; font-size: 10px; }
+}
+@media (max-width: 600px) {
+  .sidebar { display: none; }
+  .tab-content.active { flex-direction: column; }
+  .header-stats { display: none; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .tab-btn { padding: 6px 8px; font-size: 10px; }
+}
 </style>
 </head>
 <body>
@@ -288,7 +228,7 @@ tr:hover { background: var(--bg3); }
 
   <!-- ==================== DASHBOARD ==================== -->
   <div class="tab-content active" id="tab-dashboard">
-    <div style="display:flex; flex:1; overflow:hidden;">
+    <div class="tab-panel-inner">
       <div class="chart-area">
         <canvas id="canvas-chart" style="width:100%;height:100%;display:none;"></canvas>
         <div id="tv-chart"></div>
@@ -322,8 +262,8 @@ tr:hover { background: var(--bg3); }
 
   <!-- ==================== SIMULADOR ==================== -->
   <div class="tab-content" id="tab-simulador">
-    <div style="display:flex; flex:1; overflow:hidden;">
-      <div style="flex:1; overflow-y:auto; padding:12px;">
+    <div class="tab-panel-inner">
+      <div class="scroll-y" style="padding:10px;">
         <div class="card" style="margin-bottom:12px;">
           <div class="card-title">📌 Nova Simulação</div>
           <div class="grid-3">
@@ -452,8 +392,8 @@ tr:hover { background: var(--bg3); }
 
   <!-- ==================== BACKTEST ==================== -->
   <div class="tab-content" id="tab-backtest">
-    <div style="display:flex; flex:1; overflow:hidden;">
-      <div style="flex:1; overflow-y:auto; padding:12px;">
+    <div class="tab-panel-inner">
+      <div class="scroll-y" style="padding:10px;">
         <div class="card" style="margin-bottom:12px;">
           <div class="card-title">⚡ Configuração do Backtest</div>
           <div class="grid-3">
@@ -531,8 +471,8 @@ tr:hover { background: var(--bg3); }
 
   <!-- ==================== DIÁRIO ==================== -->
   <div class="tab-content" id="tab-diario">
-    <div style="display:flex; flex:1; overflow:hidden;">
-      <div style="flex:1; overflow-y:auto; padding:12px;">
+    <div class="tab-panel-inner">
+      <div class="scroll-y" style="padding:10px;">
         <div class="flex-between mb-8">
           <div style="display:flex; gap:8px;">
             <select id="diario-filter" style="width:auto;" onchange="renderDiario()">
@@ -586,8 +526,8 @@ tr:hover { background: var(--bg3); }
 
   <!-- ==================== ESTUDO ==================== -->
   <div class="tab-content" id="tab-estudo">
-    <div style="display:flex; flex:1; overflow:hidden;">
-      <div style="flex:1; overflow-y:auto; padding:12px;">
+    <div class="tab-panel-inner">
+      <div class="scroll-y" style="padding:10px;">
         <div class="flex-between mb-8">
           <div style="display:flex; gap:8px; align-items:center;">
             <select id="estudo-cat-filter" style="width:auto;" onchange="renderEstudo()">
@@ -665,8 +605,8 @@ tr:hover { background: var(--bg3); }
 
   <!-- ==================== EVOLUÇÃO ==================== -->
   <div class="tab-content" id="tab-evolucao">
-    <div style="display:flex; flex:1; overflow:hidden;">
-      <div style="flex:1; overflow-y:auto; padding:12px;">
+    <div class="tab-panel-inner">
+      <div class="scroll-y" style="padding:10px;">
         <!-- Agent Controls -->
         <div class="card" style="margin-bottom:12px;">
           <div class="flex-between">
@@ -860,7 +800,8 @@ function initCanvasChart() {
   if (!canvas) return;
   canvas.style.display = 'block';
   canvasChart.mode = 'on';
-  document.getElementById('tv-chart').style.display = 'none';
+  const tvChart = document.getElementById('tv-chart');
+  if (tvChart) { tvChart.style.display = 'none'; tvChart.style.zIndex = '0'; }
   if (tvWidget) { tvWidget.remove(); tvWidget = null; }
   loadCanvasData();
   canvasChart.interval = setInterval(loadCanvasData, 10000);
@@ -1039,6 +980,10 @@ function initTradingView() {
     else { console.log('[TV] Fallback to Canvas'); initCanvasChart(); }
     return;
   }
+  const canvas = document.getElementById('canvas-chart');
+  if (canvas) { canvas.style.display = 'none'; canvasChart.mode = 'off'; }
+  const tvChart = document.getElementById('tv-chart');
+  if (tvChart) { tvChart.style.display = 'block'; tvChart.style.zIndex = '2'; }
   tvWidget = new TradingView.widget({
     container_id: 'tv-chart',
     symbol: STATE.tvSymbol || 'BMFBOVESPA:WIN1!',
