@@ -23,6 +23,47 @@ const HOST = process.env.HOST || '0.0.0.0';
 // Use Railway volume mount path directly, otherwise local ./data
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 const YH_SYMBOL = process.env.YH_SYMBOL || '^BVSP';
+const AV_KEY = process.env.ALPHA_VANTAGE_KEY || '';
+const AV_SYMBOL = process.env.AV_SYMBOL || '^BVSP';
+
+// ============================================================================
+// ALPHA VANTAGE — Live data (works on Railway, free tier: 25 req/day)
+// ============================================================================
+function fetchAlphaVantage(tf = '5min') {
+  return new Promise((resolve) => {
+    if (!AV_KEY) { resolve(null); return; }
+    const url = `/query?function=TIME_SERIES_INTRADAY&symbol=${AV_SYMBOL}&interval=${tf}&outputsize=compact&apikey=${AV_KEY}`;
+    console.log(`[AV] Fetching ${tf}...`);
+    https.get({ hostname: 'www.alphavantage.co', path: url, method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 }, (res) => {
+      let b = '';
+      res.on('data', c => b += c);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(b);
+          const ts = json[`Time Series (${tf})`];
+          if (!ts) { resolve(null); return; }
+          const data = Object.entries(ts).sort((a, b) => a[0].localeCompare(b[0])).map(([d, v]) => {
+            const [date, time] = d.split(' ');
+            return { t: new Date(`${date}T${time || '00:00:00'}-03:00`).getTime(), o: +v['1. open'], h: +v['2. high'], l: +v['3. low'], c: +v['4. close'], v: +v['5. volume'] || 0 };
+          });
+          if (tf === '5min') {
+            const existing = state.ohlcData['M5'] || [];
+            const existingTs = new Set(existing.map(c => c.t));
+            let nc = 0;
+            for (const c of data) { if (!existingTs.has(c.t)) { existing.push(c); nc++; } }
+            existing.sort((a, b) => a.t - b.t);
+            state.ohlcData['M5'] = existing;
+            state.lastDataFetch['M5'] = Date.now();
+            fs.writeFileSync(path.join(DATA_DIR, 'ohlcv_M5_live.json'), JSON.stringify(data));
+            broadcast({ type: 'live_data', source: 'alphavantage', newCandles: nc, total: existing.length, lastPrice: data[data.length - 1]?.c, timestamp: new Date().toISOString() });
+            console.log(`[AV] ${nc} new candles. Total: ${existing.length}`);
+          }
+          resolve(data);
+        } catch (e) { resolve(null); }
+      });
+    }).on('error', () => resolve(null)).on('timeout', function() { this.destroy(); resolve(null); });
+  });
+}
 
 const SEED_DIR = path.join(__dirname, 'seed-data');
 
@@ -470,6 +511,23 @@ app.get('/api/market/status', (req, res) => {
   res.json(state.marketRouter.getStatus());
 });
 
+// API: Live data status
+app.get('/api/live/status', (req, res) => {
+  const livePath = path.join(DATA_DIR, 'ohlcv_M5_live.json');
+  const hasLive = fs.existsSync(livePath);
+  let lastCandle = null;
+  if (hasLive) {
+    const data = JSON.parse(fs.readFileSync(livePath, 'utf-8'));
+    lastCandle = data[data.length - 1];
+  }
+  res.json({
+    configured: !!AV_KEY,
+    hasLiveData: hasLive,
+    lastCandle: lastCandle ? { price: lastCandle.c, time: new Date(lastCandle.t).toISOString() } : null,
+    source: AV_KEY ? 'Alpha Vantage' : 'seed-data (Yahoo Finance snapshot)',
+  });
+});
+
 // API: Download data for specific market
 app.get('/api/download/:market/:tf', async (req, res) => {
   if (!state.marketRouter) return res.status(500).json({ error: 'Market router not initialized' });
@@ -756,6 +814,19 @@ try {
   // Live polling during market hours (every 2 minutes)
   cron.schedule('*/2 12-21 * * 1-5', () => {
     livePoll().catch(console.error);
+  }, { timezone: 'America/Sao_Paulo' });
+
+  // Alpha Vantage live data: every 5 min, capped at 25/day (free tier)
+  let avDailyCount = 0;
+  let avLastReset = new Date().toDateString();
+  cron.schedule('*/5 12-21 * * 1-5', () => {
+    const today = new Date().toDateString();
+    if (today !== avLastReset) { avDailyCount = 0; avLastReset = today; }
+    if (avDailyCount < 25 && AV_KEY) {
+      avDailyCount++;
+      console.log(`[AV] Poll #${avDailyCount}/25`);
+      fetchAlphaVantage('5min').catch(() => {});
+    }
   }, { timezone: 'America/Sao_Paulo' });
 
   // Full study: after market close + overnight

@@ -874,10 +874,22 @@ function stopCanvasChart() {
 
 async function loadCanvasData() {
   try {
-    const resp = await fetch('/api/data/M5');
+    // Try live data first
+    let resp = await fetch('/api/data/M5');
+    // If has Alpha Vantage live data, prefer that
+    const liveCheck = await fetch('/api/live/status').then(r => r.json()).catch(() => ({}));
+    if (liveCheck.hasLiveData) {
+      // Live data merged in memory — use the in-memory M5 which has both
+    }
     if (!resp.ok) return;
     canvasChart.data = await resp.json();
     renderCanvas();
+    // Update live indicator
+    if (liveCheck.lastCandle) {
+      const age = (Date.now() - new Date(liveCheck.lastCandle.time).getTime()) / 60000;
+      document.getElementById('live-price').textContent = liveCheck.lastCandle.price.toLocaleString('pt-BR');
+      document.getElementById('live-price').className = 'price-badge ' + (age < 30 ? 'price-up' : '');
+    }
   } catch(e) {}
 }
 

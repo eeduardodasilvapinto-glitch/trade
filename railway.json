@@ -20,6 +20,8 @@
   "variables": {
     "RAILWAY_RUN_UID": "0",
     "YH_SYMBOL": "^BVSP",
-    "YH_SYMBOL_ALT": "MES=F"
+    "YH_SYMBOL_ALT": "MES=F",
+    "ALPHA_VANTAGE_KEY": "",
+    "AV_SYMBOL": "^BVSP"
   }
 }
