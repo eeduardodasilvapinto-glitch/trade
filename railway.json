@@ -19,6 +19,7 @@
   },
   "variables": {
     "RAILWAY_RUN_UID": "0",
-    "YH_SYMBOL": "^BVSP"
+    "YH_SYMBOL": "^BVSP",
+    "YH_SYMBOL_ALT": "MES=F"
   }
 }

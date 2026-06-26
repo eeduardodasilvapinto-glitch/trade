@@ -464,8 +464,21 @@ app.get('/api/yahoo', (req, res) => {
   }).on('error', (e) => res.status(502).json({ error: e.message }));
 });
 
-// API: Download specific timeframe
-app.get('/api/download/:tf', async (req, res) => {
+// API: Market status
+app.get('/api/market/status', (req, res) => {
+  if (!state.marketRouter) return res.json({ active: 'WIN' });
+  res.json(state.marketRouter.getStatus());
+});
+
+// API: Download data for specific market
+app.get('/api/download/:market/:tf', async (req, res) => {
+  if (!state.marketRouter) return res.status(500).json({ error: 'Market router not initialized' });
+  const configs = { M5:['5m','60d'], M15:['15m','60d'], H1:['1h','2y'], D1:['1d','5y'] };
+  const cfg = configs[req.params.tf];
+  if (!cfg) return res.status(400).json({ error: 'Invalid TF' });
+  const data = await state.marketRouter.fetchMarketData(req.params.market, req.params.tf, cfg[0], cfg[1]);
+  res.json({ market: req.params.market, tf: req.params.tf, candles: data?.length || 0 });
+});
   const configs = { M5:['5m','60d'], M15:['15m','60d'], M30:['30m','60d'], H1:['1h','2y'], D1:['1d','5y'], W1:['1wk','5y'] };
   const cfg = configs[req.params.tf];
   if (!cfg) return res.status(400).json({ error: 'Invalid TF. Use M5,M15,M30,H1,D1,W1' });
@@ -801,6 +814,12 @@ server.listen(PORT, HOST, () => {
   aiWorker.start();
   console.log('🤖 AI Worker iniciado');
 
+  // Start Market Router
+  const { MarketRouter } = require('./engine/market-router');
+  const marketRouter = new MarketRouter(DATA_DIR, broadcast);
+  state.marketRouter = marketRouter;
+  console.log(`🔀 Market Router: ${marketRouter.currentMarket?.id || 'WIN'} (WIN:${marketRouter.isMarketOpen('WIN')}, MES:${marketRouter.isMarketOpen('MES')})`);
+
   // Start Learner (continuous learning)
   const { Learner } = require('./engine/learner');
   const learner = new Learner(DATA_DIR, broadcast);
@@ -810,7 +829,7 @@ server.listen(PORT, HOST, () => {
 
   // Start Agent (autonomous paper trader)
   const { Agent } = require('./engine/agent');
-  const agent = new Agent(DATA_DIR, broadcast);
+  const agent = new Agent(DATA_DIR, broadcast, marketRouter);
   agent.learner = learner;
   state.agent = agent;
   agent.start();
@@ -827,6 +846,14 @@ server.listen(PORT, HOST, () => {
 // ============================================================
 // SCHEDULED JOBS — Learning cycles
 // ============================================================
+
+// Market Router: check every 60s
+cron.schedule('* * * * *', () => {
+  if (state.marketRouter) {
+    const changed = state.marketRouter.tick();
+    if (changed) console.log(`[Market] Switched to ${changed.id} (${changed.name})`);
+  }
+}, { timezone: 'America/Sao_Paulo' });
 
 // Learner: every 15 minutes
 cron.schedule('*/15 * * * *', () => {

@@ -256,7 +256,7 @@ tr:hover { background: var(--bg3); }
 <div class="header">
   <div class="header-left">
     <h1>WINFUT</h1>
-    <span class="symbol">BMFBOVESPA:WIN1!</span>
+    <span class="symbol" id="market-indicator" style="cursor:default;">🇧🇷 B3</span>
     <span class="price-badge price-up" id="live-price">--</span>
   </div>
   <div class="header-stats">
@@ -853,7 +853,7 @@ function initTradingView() {
   }
   tvWidget = new TradingView.widget({
     container_id: 'tv-chart',
-    symbol: STATE.tvSymbol,
+    symbol: STATE.tvSymbol || 'BMFBOVESPA:WIN1!',
     interval: '5',
     timezone: 'America/Sao_Paulo',
     theme: 'dark',
@@ -2204,6 +2204,14 @@ function escapeHtml(text) {
 }
 
 // AI real-time card display
+function updateMarketIndicator(market) {
+  const el = document.getElementById('market-indicator');
+  if (!el || !market) return;
+  el.innerHTML = `${market.flag || '🏴'} ${market.id}`;
+  el.title = `${market.name} — ${market.yhSymbol}`;
+  el.style.color = market.id === 'WIN' ? 'var(--green)' : 'var(--blue)';
+}
+
 function showAICard(data) {
   const panel = document.getElementById('ai-response');
   if (!panel) return;
@@ -2321,6 +2329,14 @@ function connectWebSocket() {
         case 'ai_deep_report':
           showAICard({ ...data, session: 'deep', content: '📋 RELATÓRIO PROFUNDO\n\n' + data.content });
           break;
+        // Market switch event
+        case 'market_switch':
+          updateMarketIndicator(data.market);
+          if (data.to && data.to !== STATE.tvSymbol?.split(':')[1]?.split('!')[0]) {
+            STATE.tvSymbol = data.market.tvSymbol;
+            if (tvWidget) { tvWidget.remove(); tvWidget = null; tvRetries = 0; initTradingView(); }
+          }
+          break;
         // Agent events
         case 'agent_trade_closed':
         case 'agent_entry':
@@ -2408,6 +2424,9 @@ document.head.appendChild(style);
   const simDh = document.getElementById('sim-datahora');
   if (simDh) simDh.value = new Date().toISOString().slice(0, 16);
   connectWebSocket();
+
+  // Load market indicator
+  fetch('/api/market/status').then(r => r.json()).then(d => updateMarketIndicator({ id: d.current, name: d.currentName, flag: d.currentFlag, yhSymbol: d.currentSymbol })).catch(() => {});
 
   // Load saved AI key
   const savedAIKey = localStorage.getItem('winfut_ai_key') || '';

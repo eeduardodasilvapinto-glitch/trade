@@ -7,10 +7,15 @@ const fs = require('fs');
 const path = require('path');
 
 class Agent {
-  constructor(dataDir, broadcastFn) {
+  constructor(dataDir, broadcastFn, marketRouter) {
     this.dataDir = dataDir;
     this.broadcast = broadcastFn || (() => {});
-    this.learner = null; // Set after construction
+    this.learner = null;
+    this.marketRouter = marketRouter || null;
+
+    // Market-aware state
+    this.markets = {};    // { WIN: { capital, trades, ... }, MES: { ... } }
+    this.activeMarketId = null;
 
     // Trading state
     this.capital = 10000;
@@ -21,13 +26,13 @@ class Agent {
     this.dailyPnl = 0;
     this.dailyLoss = 0;
     this.weeklyLoss = 0;
-    this.state = 'off'; // off, running, paused, cooldown
+    this.state = 'off';
 
     // Risk limits
-    this.maxDailyLoss = 0.02; // 2%
-    this.maxWeeklyLoss = 0.05; // 5%
+    this.maxDailyLoss = 0.02;
+    this.maxWeeklyLoss = 0.05;
     this.maxConsecutiveLosses = 5;
-    this.maxDrawdown = 0.15; // 15%
+    this.maxDrawdown = 0.15;
 
     // Stats
     this.totalTrades = 0;
@@ -42,6 +47,15 @@ class Agent {
 
     this.loadState();
   }
+
+  // Current market helpers
+  getMarket() {
+    return this.marketRouter?.currentMarket || { id: 'WIN', yhSymbol: '^BVSP', tvSymbol: 'BMFBOVESPA:WIN1!', pointValue: 0.20, name: 'WINFUT' };
+  }
+  
+  getMarketId() { return this.getMarket().id; }
+  getPointValue() { return this.getMarket().pointValue || 0.20; }
+  getSymbol() { return this.getMarket().yhSymbol || '^BVSP'; }
 
   // ============================================================
   // STATE PERSISTENCE
@@ -288,10 +302,13 @@ class Agent {
   }
 
   recordTrade(pos, exitPrice, pts, result, reason, pnl) {
+    const pointVal = this.getPointValue();
+    const calculatedPnl = pnl || (pts * pointVal);
     const trade = {
+      market: this.getMarketId(),
       date: new Date().toISOString().split('T')[0],
       time: new Date().toTimeString().slice(0, 5),
-      ativo: 'WINFUT',
+      ativo: this.getSymbol(),
       setup: pos.strategy || 'unknown',
       direction: pos.type === 'long' ? 'L' : 'S',
       entryPrice: pos.entry,
@@ -299,7 +316,7 @@ class Agent {
       exitPrice,
       pts,
       result,
-      pnl: pnl || (pts * 0.2),
+      pnl: calculatedPnl,
       reason,
       createdAt: new Date().toISOString(),
     };
@@ -456,13 +473,13 @@ class Agent {
   }
 
   executeSignal(signal) {
-    // Calculate position size (Kelly simplified)
-    const riskAmount = this.capital * 0.005; // 0.5% per trade
+    const pointValue = this.getPointValue();
+    const riskAmount = this.capital * 0.005;
     const stopDist = Math.abs(signal.price - signal.stop);
-    if (stopDist < 10) return; // Too tight
+    if (stopDist < 10) return;
 
-    const contracts = Math.max(1, Math.floor(riskAmount / (stopDist * 0.2)));
-    const actualRisk = contracts * stopDist * 0.2;
+    const contracts = Math.max(1, Math.floor(riskAmount / (stopDist * pointValue)));
+    const actualRisk = contracts * stopDist * pointValue;
 
     const pos = {
       id: Date.now().toString(36),
@@ -596,8 +613,10 @@ class Agent {
       ? (this.closedTrades.filter(t => t.result === 'win').reduce((s, t) => s + (t.pnl || 0), 0) /
          Math.abs(this.closedTrades.filter(t => t.result === 'loss').reduce((s, t) => s + (t.pnl || 0), 0)))
       : 0;
+    const market = this.getMarket();
 
     return {
+      market: { id: market.id, name: market.name, symbol: market.yhSymbol, pointValue: market.pointValue, flag: market.flag },
       state: this.state,
       capital: this.capital,
       initialCapital: this.initialCapital,
