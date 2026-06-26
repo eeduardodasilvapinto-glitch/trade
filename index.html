@@ -290,9 +290,14 @@ tr:hover { background: var(--bg3); }
   <div class="tab-content active" id="tab-dashboard">
     <div style="display:flex; flex:1; overflow:hidden;">
       <div class="chart-area">
+        <canvas id="canvas-chart" style="width:100%;height:100%;display:none;"></canvas>
         <div id="tv-chart"></div>
       </div>
       <div class="sidebar">
+        <div style="display:flex;gap:4px;margin-bottom:8px;">
+          <button class="btn btn-outline btn-sm" style="flex:1;font-size:10px;" onclick="initCanvasChart()">📊 Canvas Chart</button>
+          <button class="btn btn-outline btn-sm" style="flex:1;font-size:10px;" onclick="initTradingView()">📈 TradingView</button>
+        </div>
         <h3>📈 Cotações — Yahoo Finance</h3>
         <div id="yh-status" class="loading"><div class="spinner"></div> Conectando...</div>
         <div id="yh-data" style="display:none;">
@@ -670,11 +675,15 @@ tr:hover { background: var(--bg3); }
             </div>
             <div style="display:flex; gap:6px;">
               <button class="btn btn-green btn-sm" onclick="agentControl('start')">▶ Iniciar</button>
-              <button class="btn btn-outline btn-sm" onclick="agentControl('pause')">⏸ Pausar</button>
               <button class="btn btn-outline btn-sm" onclick="agentReplay()">🔄 Replay</button>
-              <button class="btn btn-red btn-sm" onclick="agentControl('stop')">⏹ Parar</button>
-              <button class="btn btn-outline btn-sm" onclick="agentControl('reset')">🔄 Reset</button>
+              <button class="btn btn-outline btn-sm" onclick="agentControl('stop')">⏹ Parar</button>
             </div>
+          </div>
+          <div class="grid-3 mt-8">
+            <div class="form-group"><label>Capital (R$)</label><input id="evo-capital" type="number" value="10000" style="width:100%;"></div>
+            <div class="form-group"><label>Risco/Trade (%)</label><input id="evo-risk" type="number" step="0.1" value="0.5" style="width:100%;"></div>
+            <div class="form-group"><label>&nbsp;</label><button class="btn btn-blue btn-sm" onclick="applyAgentConfig()" style="width:100%;">💾 Aplicar</button></div>
+          </div>
           </div>
         </div>
 
@@ -833,7 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById(id)?.addEventListener('input', calculateStop);
   });
 
-  initTradingView();
+  initCanvasChart();
   fetchYahooData();
   renderDiario();
   updateRiskPanel();
@@ -842,14 +851,174 @@ document.addEventListener('DOMContentLoaded', () => {
   renderBTHistory();
 });
 
+// === CANVAS CHART — Pure HTML5, 0 dependencies, live via /api/data/M5 ===
+let canvasChart = { mode: 'off', interval: null, data: [], visible: 100, offset: 0 };
+
+function initCanvasChart() {
+  const canvas = document.getElementById('canvas-chart');
+  if (!canvas) return;
+  canvas.style.display = 'block';
+  canvasChart.mode = 'on';
+  document.getElementById('tv-chart').style.display = 'none';
+  if (tvWidget) { tvWidget.remove(); tvWidget = null; }
+  loadCanvasData();
+  canvasChart.interval = setInterval(loadCanvasData, 10000);
+}
+
+function stopCanvasChart() {
+  if (canvasChart.interval) clearInterval(canvasChart.interval);
+  const canvas = document.getElementById('canvas-chart');
+  if (canvas) canvas.style.display = 'none';
+  canvasChart.mode = 'off';
+}
+
+async function loadCanvasData() {
+  try {
+    const resp = await fetch('/api/data/M5');
+    if (!resp.ok) return;
+    canvasChart.data = await resp.json();
+    renderCanvas();
+  } catch(e) {}
+}
+
+function renderCanvas() {
+  const canvas = document.getElementById('canvas-chart');
+  if (!canvas || canvasChart.mode === 'off') return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.clientWidth;
+  const H = canvas.parentElement.clientHeight;
+  canvas.width = W;
+  canvas.height = H;
+  if (W < 100) return;
+
+  const data = canvasChart.data;
+  if (!data || data.length < 2) { ctx.fillStyle='#8b949e';ctx.font='14px monospace';ctx.fillText('Sem dados. Execute o Estudo primeiro.',20,40); return; }
+
+  const visible = canvasChart.visible || 100;
+  const offset = canvasChart.offset || 0;
+  const slice = data.slice(-visible - offset, -offset || undefined);
+  if (slice.length < 2) return;
+
+  const pad = { top: 20, right: 60, bottom: 50, left: 70 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const prices = slice.flatMap(d => [d.h, d.l]);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const candleW = Math.max(1, cw / slice.length - 1);
+  const toX = (i) => pad.left + i * (cw / slice.length) + (cw / slice.length) / 2;
+  const toY = (p) => pad.top + ch - ((p - min) / range) * ch;
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 4; i++) {
+    const y = pad.top + (ch / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    const price = max - (range / 4) * i;
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText(price.toFixed(0), 4, y + 3);
+  }
+
+  // SMA 20
+  const sma20 = calcSMA(slice.map(d => d.c), 20);
+  ctx.strokeStyle = '#d2991d'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 0; i < slice.length; i++) {
+    if (!sma20[i]) continue;
+    const x = toX(i), y = toY(sma20[i]);
+    i === 0 || !sma20[i-1] ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // SMA 50
+  const sma50 = calcSMA(slice.map(d => d.c), 50);
+  ctx.strokeStyle = '#a371f7'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 0; i < slice.length; i++) {
+    if (!sma50[i]) continue;
+    const x = toX(i), y = toY(sma50[i]);
+    i === 0 || !sma50[i-1] ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Candles
+  for (let i = 0; i < slice.length; i++) {
+    const d = slice[i];
+    const x = toX(i);
+    const openY = toY(d.o), closeY = toY(d.c);
+    const highY = toY(d.h), lowY = toY(d.l);
+    const isGreen = d.c >= d.o;
+    ctx.strokeStyle = isGreen ? '#3fb950' : '#f85149';
+    ctx.fillStyle = isGreen ? '#3fb950' : '#f85149';
+    // Wick
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, highY); ctx.lineTo(x, lowY); ctx.stroke();
+    // Body
+    const bodyH = Math.max(1, Math.abs(closeY - openY));
+    ctx.fillRect(x - candleW / 2, Math.min(openY, closeY), candleW, bodyH);
+  }
+
+  // Time axis
+  ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace';
+  for (let i = 0; i < Math.min(5, slice.length); i++) {
+    const idx = Math.floor(i * slice.length / 5);
+    if (slice[idx]) {
+      const date = new Date(slice[idx].t);
+      ctx.fillText(date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), toX(idx) - 20, H - 12);
+    }
+  }
+
+  // Zoom controls
+  ctx.fillStyle = '#58a6ff'; ctx.font = '11px monospace';
+  ctx.fillText(`+/- zoom  ←→ scroll  ${slice.length} candles`, pad.left + 10, 16);
+}
+
+function calcSMA(arr, n) {
+  const r = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (i < n - 1) { r.push(null); continue; }
+    let s = 0; for (let j = i - n + 1; j <= i; j++) s += arr[j];
+    r.push(s / n);
+  }
+  return r;
+}
+
+// Canvas event handlers
+document.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('canvas-chart');
+  if (!canvas) return;
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (canvasChart.mode !== 'on') return;
+    if (e.deltaY < 0) canvasChart.visible = Math.min(canvasChart.data.length, (canvasChart.visible || 100) + 20);
+    else canvasChart.visible = Math.max(20, (canvasChart.visible || 100) - 20);
+    renderCanvas();
+  });
+  let isDragging = false, dragStart = 0;
+  canvas.addEventListener('mousedown', (e) => { isDragging = true; dragStart = e.clientX; });
+  canvas.addEventListener('mouseup', () => { isDragging = false; });
+  canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging || canvasChart.mode !== 'on') return;
+    const dx = e.clientX - dragStart;
+    canvasChart.offset = Math.max(0, (canvasChart.offset || 0) + (dx > 0 ? -5 : 5));
+    dragStart = e.clientX;
+    renderCanvas();
+  });
+  canvas.addEventListener('mouseleave', () => { isDragging = false; });
+});
+
 // === TRADINGVIEW CHART ===
 let tvWidget = null;
 let tvRetries = 0;
 function initTradingView() {
   if (tvWidget) return;
   if (typeof TradingView === 'undefined') {
-    if (tvRetries++ < 20) setTimeout(initTradingView, 500);
-    else console.log('[TV] TradingView script failed to load');
+    if (tvRetries++ < 10) setTimeout(initTradingView, 800);
+    else { console.log('[TV] Fallback to Canvas'); initCanvasChart(); }
     return;
   }
   tvWidget = new TradingView.widget({
@@ -2144,6 +2313,19 @@ async function agentReplay() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ speed: 0, maxCandles: 0, timeframe: 'M5' }),
     });
+  } catch(e) { console.error(e); }
+}
+
+async function applyAgentConfig() {
+  const capital = parseInt(document.getElementById('evo-capital')?.value) || 10000;
+  const risk = parseFloat(document.getElementById('evo-risk')?.value) || 0.5;
+  try {
+    await fetch('/api/agent/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capital, riskPerTrade: risk }),
+    });
+    loadAgentStatus();
   } catch(e) { console.error(e); }
 }
 

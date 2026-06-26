@@ -556,6 +556,18 @@ app.post('/api/agent/replay', async (req, res) => {
     timeframe: timeframe || 'M5',
   }).catch(console.error);
 });
+app.post('/api/agent/config', (req, res) => {
+  if (!state.agent) return res.status(500).json({ error: 'Agent not initialized' });
+  const { capital, riskPerTrade } = req.body || {};
+  if (capital) {
+    state.agent.capital = capital;
+    state.agent.initialCapital = capital;
+    state.agent.peakCapital = capital;
+  }
+  if (riskPerTrade) state.agent.maxDailyLoss = riskPerTrade / 100;
+  state.agent.saveState();
+  res.json({ ok: true, capital: state.agent.capital, riskPerTrade: riskPerTrade || 0.5 });
+});
 app.get('/api/agent/status', (req, res) => {
   if (!state.agent) return res.json({ state: 'off' });
   res.json(state.agent.getStatus());
@@ -883,6 +895,19 @@ cron.schedule('* 12-21 * * 1-5', () => {
 // Meta-Learner: every 6 hours
 cron.schedule('0 */6 * * *', () => {
   if (state.metaLearner) state.metaLearner.cycle().catch(console.error);
+}, { timezone: 'America/Sao_Paulo' });
+
+// Auto-replay: every 30 min to keep agent learning continuously
+cron.schedule('*/30 * * * *', () => {
+  if (state.agent && state.agent.state === 'running') {
+    console.log('[AutoReplay] Running scheduled replay...');
+    const { runReplay } = require('./engine/replay');
+    runReplay(state.agent, state.learner, state.metaLearner, DATA_DIR, broadcast, {
+      speed: 0,
+      maxCandles: 3000,
+      timeframe: 'M5',
+    }).catch(console.error);
+  }
 }, { timezone: 'America/Sao_Paulo' });
 
 // Graceful shutdown
