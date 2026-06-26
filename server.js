@@ -550,6 +550,14 @@ app.get('/api/config/keys', (req, res) => {
   });
 });
 
+// Return actual keys (for browser sync after server restart)
+app.get('/api/config/keys/get', (req, res) => {
+  res.json({
+    openrouter_key: OPENROUTER_KEY || '',
+    alphavantage_key: process.env.ALPHA_VANTAGE_KEY || AV_KEY || '',
+  });
+});
+
 app.post('/api/config/keys', express.json(), (req, res) => {
   const { openrouter, alphavantage } = req.body || {};
   if (openrouter) {
