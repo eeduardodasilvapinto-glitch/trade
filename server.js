@@ -29,11 +29,13 @@ const AV_SYMBOL = process.env.AV_SYMBOL || '^BVSP';
 // ============================================================================
 // ALPHA VANTAGE — Live data (works on Railway, free tier: 25 req/day)
 // ============================================================================
-function fetchAlphaVantage(tf = '5min') {
+function fetchAlphaVantage(tf = '5min', symbolOverride = null) {
   return new Promise((resolve) => {
     if (!AV_KEY) { resolve(null); return; }
-    const url = `/query?function=TIME_SERIES_INTRADAY&symbol=${AV_SYMBOL}&interval=${tf}&outputsize=compact&apikey=${AV_KEY}`;
-    console.log(`[AV] Fetching ${tf}...`);
+    const symbol = symbolOverride || (state.marketRouter?.currentMarket?.yhSymbol) || AV_SYMBOL;
+    const marketId = symbolOverride ? (symbolOverride.startsWith('^') ? 'WIN' : 'MES') : (state.marketRouter?.currentMarket?.id || 'WIN');
+    const url = `/query?function=TIME_SERIES_INTRADAY&symbol=${encodeURIComponent(symbol)}&interval=${tf}&outputsize=compact&apikey=${AV_KEY}`;
+    console.log(`[AV:${marketId}] Fetching ${tf} for ${symbol}...`);
     https.get({ hostname: 'www.alphavantage.co', path: url, method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 }, (res) => {
       let b = '';
       res.on('data', c => b += c);
@@ -46,18 +48,17 @@ function fetchAlphaVantage(tf = '5min') {
             const [date, time] = d.split(' ');
             return { t: new Date(`${date}T${time || '00:00:00'}-03:00`).getTime(), o: +v['1. open'], h: +v['2. high'], l: +v['3. low'], c: +v['4. close'], v: +v['5. volume'] || 0 };
           });
-          if (tf === '5min') {
-            const existing = state.ohlcData['M5'] || [];
-            const existingTs = new Set(existing.map(c => c.t));
-            let nc = 0;
-            for (const c of data) { if (!existingTs.has(c.t)) { existing.push(c); nc++; } }
-            existing.sort((a, b) => a.t - b.t);
-            state.ohlcData['M5'] = existing;
-            state.lastDataFetch['M5'] = Date.now();
-            fs.writeFileSync(path.join(DATA_DIR, 'ohlcv_M5_live.json'), JSON.stringify(data));
-            broadcast({ type: 'live_data', source: 'alphavantage', newCandles: nc, total: existing.length, lastPrice: data[data.length - 1]?.c, timestamp: new Date().toISOString() });
-            console.log(`[AV] ${nc} new candles. Total: ${existing.length}`);
-          }
+          // Always merge into M5 for the active market
+          const existing = state.ohlcData['M5'] || [];
+          const existingTs = new Set(existing.map(c => c.t));
+          let nc = 0;
+          for (const c of data) { if (!existingTs.has(c.t)) { existing.push(c); nc++; } }
+          existing.sort((a, b) => a.t - b.t);
+          state.ohlcData['M5'] = existing;
+          state.lastDataFetch['M5'] = Date.now();
+          fs.writeFileSync(path.join(DATA_DIR, 'ohlcv_M5_live.json'), JSON.stringify(data));
+          broadcast({ type: 'live_data', source: 'alphavantage', market: marketId, symbol, newCandles: nc, total: existing.length, lastPrice: data[data.length - 1]?.c, timestamp: new Date().toISOString() });
+          console.log(`[AV:${marketId}] ${nc} new candles. Total: ${existing.length}`);
           resolve(data);
         } catch (e) { resolve(null); }
       });
@@ -524,8 +525,33 @@ app.get('/api/live/status', (req, res) => {
     configured: !!AV_KEY,
     hasLiveData: hasLive,
     lastCandle: lastCandle ? { price: lastCandle.c, time: new Date(lastCandle.t).toISOString() } : null,
+    activeMarket: state.marketRouter?.currentMarket?.id || 'WIN',
+    activeSymbol: state.marketRouter?.currentMarket?.yhSymbol || '^BVSP',
     source: AV_KEY ? 'Alpha Vantage' : 'seed-data (Yahoo Finance snapshot)',
   });
+});
+
+// API: Force manual Alpha Vantage fetch NOW (anytime)
+app.post('/api/live/fetch', async (req, res) => {
+  if (!AV_KEY) return res.status(400).json({ error: 'Alpha Vantage key not configured' });
+  res.json({ status: 'fetching' });
+  const data = await fetchAlphaVantage('5min');
+  if (data) {
+    broadcast({ type: 'live_fetch_done', candles: data.length, lastPrice: data[data.length - 1]?.c });
+  }
+});
+
+// API: Force fetch for specific market
+app.post('/api/live/fetch/:market', async (req, res) => {
+  if (!AV_KEY) return res.status(400).json({ error: 'Alpha Vantage key not configured' });
+  const symbols = { WIN: '^BVSP', MES: 'MES=F' };
+  const symbol = symbols[req.params.market];
+  if (!symbol) return res.status(400).json({ error: 'Invalid market. Use WIN or MES' });
+  res.json({ status: 'fetching', market: req.params.market, symbol });
+  const data = await fetchAlphaVantage('5min', symbol);
+  if (data) {
+    broadcast({ type: 'live_fetch_done', candles: data.length, lastPrice: data[data.length - 1]?.c, market: req.params.market });
+  }
 });
 
 // API: Download data for specific market
@@ -816,7 +842,7 @@ try {
     livePoll().catch(console.error);
   }, { timezone: 'America/Sao_Paulo' });
 
-  // Alpha Vantage live data: every 5 min, capped at 25/day (free tier)
+  // Alpha Vantage live data: every 5 min, capped at 25/day, follows active market
   let avDailyCount = 0;
   let avLastReset = new Date().toDateString();
   cron.schedule('*/5 12-21 * * 1-5', () => {
@@ -824,8 +850,9 @@ try {
     if (today !== avLastReset) { avDailyCount = 0; avLastReset = today; }
     if (avDailyCount < 25 && AV_KEY) {
       avDailyCount++;
-      console.log(`[AV] Poll #${avDailyCount}/25`);
-      fetchAlphaVantage('5min').catch(() => {});
+      const symbol = state.marketRouter?.currentMarket?.yhSymbol || '^BVSP';
+      console.log(`[AV] Poll #${avDailyCount}/25 (${symbol})`);
+      fetchAlphaVantage('5min', symbol).catch(() => {});
     }
   }, { timezone: 'America/Sao_Paulo' });
 
