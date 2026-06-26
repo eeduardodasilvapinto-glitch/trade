@@ -548,7 +548,39 @@ app.get('/api/live/debug', (req, res) => {
     .on('timeout', function() { this.destroy(); res.json({ error: 'Timeout' }); });
 });
 
-// API: Live data status
+// API: Receive live data from browser (bypasses Railway network restrictions)
+app.post('/api/live/push', express.json(), (req, res) => {
+  const { data, symbol, source } = req.body || {};
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return res.status(400).json({ error: 'No data' });
+  }
+
+  const existing = state.ohlcData['M5'] || [];
+  const existingTs = new Set(existing.map(c => c.t));
+  let nc = 0;
+  for (const c of data) {
+    if (!existingTs.has(c.t)) { existing.push(c); nc++; }
+  }
+  existing.sort((a, b) => a.t - b.t);
+  state.ohlcData['M5'] = existing;
+  state.lastDataFetch['M5'] = Date.now();
+
+  // Save to disk
+  fs.writeFileSync(path.join(DATA_DIR, 'ohlcv_M5_live.json'), JSON.stringify(data));
+
+  broadcast({
+    type: 'live_data',
+    source: source || 'browser',
+    symbol: symbol || 'SPY',
+    newCandles: nc,
+    total: existing.length,
+    lastPrice: data[data.length - 1]?.c,
+    timestamp: new Date().toISOString(),
+  });
+
+  console.log(`[LivePush] ${nc} new candles from ${source || 'browser'}. Total: ${existing.length}`);
+  res.json({ ok: true, newCandles: nc, total: existing.length });
+});
 app.get('/api/live/status', (req, res) => {
   const livePath = path.join(DATA_DIR, 'ohlcv_M5_live.json');
   const hasLive = fs.existsSync(livePath);
