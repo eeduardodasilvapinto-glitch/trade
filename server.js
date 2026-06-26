@@ -516,6 +516,67 @@ app.get('/api/ai/insights', (req, res) => {
   res.json(state.aiWorker.insights.slice(-30));
 });
 
+// API: Agent control
+app.post('/api/agent/start', (req, res) => {
+  if (!state.agent) return res.status(500).json({ error: 'Agent not initialized' });
+  state.agent.start();
+  res.json({ status: 'started', state: state.agent.state });
+});
+app.post('/api/agent/pause', (req, res) => {
+  if (!state.agent) return res.status(500).json({ error: 'Agent not initialized' });
+  state.agent.pause();
+  res.json({ status: 'paused', state: state.agent.state });
+});
+app.post('/api/agent/stop', (req, res) => {
+  if (!state.agent) return res.status(500).json({ error: 'Agent not initialized' });
+  state.agent.stop();
+  res.json({ status: 'stopped', state: state.agent.state });
+});
+app.post('/api/agent/reset', (req, res) => {
+  if (!state.agent) return res.status(500).json({ error: 'Agent not initialized' });
+  state.agent.reset();
+  res.json({ status: 'reset' });
+});
+app.get('/api/agent/status', (req, res) => {
+  if (!state.agent) return res.json({ state: 'off' });
+  res.json(state.agent.getStatus());
+});
+app.get('/api/agent/trades', (req, res) => {
+  if (!state.agent) return res.json([]);
+  res.json(state.agent.closedTrades.slice(-100));
+});
+
+// API: Learner status
+app.get('/api/learner/status', (req, res) => {
+  if (!state.learner) return res.json({ active: false });
+  res.json({
+    studyCount: state.learner.studyCount,
+    deepStudyCount: state.learner.deepStudyCount,
+    lastStudy: state.learner.lastStudy,
+    learningRate: state.learner.learningRate,
+    activeStrategies: state.learner.getActiveCount(),
+    avgWR: state.learner.getAverageWR(),
+    regime: state.learner.knowledge.marketRegime.current,
+    totalDiscoveries: state.learner.knowledge.totalDiscoveries,
+    knowledgeVersion: state.learner.knowledge.version,
+  });
+});
+app.get('/api/learner/knowledge', (req, res) => {
+  if (!state.learner) return res.json({});
+  res.json(state.learner.knowledge);
+});
+
+// API: Meta-Learner status
+app.get('/api/meta/status', (req, res) => {
+  if (!state.metaLearner) return res.json({ active: false });
+  res.json({
+    cycles: state.metaLearner.cycleCount,
+    hypotheses: state.metaLearner.hypotheses.slice(-20),
+    confirmedRules: state.metaLearner.confirmedRules,
+    evolutionLog: state.metaLearner.evolutionLog.slice(-20),
+  });
+});
+
 // API: Trigger study
 app.post('/api/study', (req, res) => {
   res.json({ status: 'started', message: 'Estudo iniciado em background' });
@@ -587,6 +648,17 @@ app.get('/api/status', (req, res) => {
     dataTimeframes: Object.keys(state.ohlcData),
     alertsCount: state.alerts.length,
     memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+    agent: state.agent ? {
+      state: state.agent.state,
+      trades: state.agent.totalTrades,
+      pnl: state.agent.capital - state.agent.initialCapital,
+      open: state.agent.openPositions.length,
+    } : null,
+    learner: state.learner ? {
+      studies: state.learner.studyCount,
+      learningRate: state.learner.learningRate,
+      regime: state.learner.knowledge.marketRegime.current,
+    } : null,
   });
 });
 
@@ -728,7 +800,57 @@ server.listen(PORT, HOST, () => {
   state.aiWorker = aiWorker;
   aiWorker.start();
   console.log('🤖 AI Worker iniciado');
+
+  // Start Learner (continuous learning)
+  const { Learner } = require('./engine/learner');
+  const learner = new Learner(DATA_DIR, broadcast);
+  state.learner = learner;
+  learner.continuousStudy().catch(console.error);
+  console.log('🧠 Learner iniciado');
+
+  // Start Agent (autonomous paper trader)
+  const { Agent } = require('./engine/agent');
+  const agent = new Agent(DATA_DIR, broadcast);
+  agent.learner = learner;
+  state.agent = agent;
+  agent.start();
+  console.log('📈 Agent iniciado (paper trading)');
+
+  // Start Meta-Learner
+  const { MetaLearner } = require('./engine/meta-learner');
+  const metaLearner = new MetaLearner(DATA_DIR, broadcast, learner);
+  metaLearner.loadMetaKnowledge();
+  state.metaLearner = metaLearner;
+  console.log('🔬 Meta-Learner iniciado');
 });
+
+// ============================================================
+// SCHEDULED JOBS — Learning cycles
+// ============================================================
+
+// Learner: every 15 minutes
+cron.schedule('*/15 * * * *', () => {
+  if (state.learner) state.learner.continuousStudy().catch(console.error);
+}, { timezone: 'America/Sao_Paulo' });
+
+// Agent tick: every 1 minute during market hours
+cron.schedule('* 12-21 * * 1-5', () => {
+  if (state.agent) {
+    try {
+      const m5Path = path.join(DATA_DIR, 'ohlcv_M5.json');
+      if (fs.existsSync(m5Path)) {
+        const data = JSON.parse(fs.readFileSync(m5Path, 'utf-8'));
+        const last = data[data.length - 1];
+        state.agent.tick(data, state.patternStats || {}, last);
+      }
+    } catch (e) { /* silent */ }
+  }
+}, { timezone: 'America/Sao_Paulo' });
+
+// Meta-Learner: every 6 hours
+cron.schedule('0 */6 * * *', () => {
+  if (state.metaLearner) state.metaLearner.cycle().catch(console.error);
+}, { timezone: 'America/Sao_Paulo' });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
