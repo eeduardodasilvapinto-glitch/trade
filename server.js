@@ -518,6 +518,36 @@ app.get('/api/market/status', (req, res) => {
   res.json(state.marketRouter.getStatus());
 });
 
+// API: Debug Alpha Vantage raw response
+app.get('/api/live/debug', (req, res) => {
+  if (!AV_KEY) return res.json({ error: 'No API key' });
+  const symbol = 'SPY';
+  const url = `/query?function=TIME_SERIES_INTRADAY&symbol=${symbol}&interval=5min&outputsize=compact&apikey=${AV_KEY}`;
+  console.log('[AV Debug] Testing...');
+  https.get({ hostname: 'www.alphavantage.co', path: url, headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 10000 }, (avRes) => {
+    let b = '';
+    avRes.on('data', c => b += c);
+    avRes.on('end', () => {
+      try {
+        const json = JSON.parse(b);
+        const keys = Object.keys(json);
+        const ts = json['Time Series (5min)'];
+        res.json({
+          statusCode: avRes.statusCode,
+          keys,
+          hasTimeSeries: !!ts,
+          sampleEntries: ts ? Object.entries(ts).slice(0, 2).map(([k, v]) => ({ time: k, close: v['4. close'] })) : null,
+          rawLength: b.length,
+          first100: b.substring(0, 200),
+        });
+      } catch(e) {
+        res.json({ error: 'Parse failed', raw: b.substring(0, 300) });
+      }
+    });
+  }).on('error', (e) => res.json({ error: 'Network error: ' + e.message }))
+    .on('timeout', function() { this.destroy(); res.json({ error: 'Timeout' }); });
+});
+
 // API: Live data status
 app.get('/api/live/status', (req, res) => {
   const livePath = path.join(DATA_DIR, 'ohlcv_M5_live.json');
