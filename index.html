@@ -671,6 +671,7 @@ tr:hover { background: var(--bg3); }
             <div style="display:flex; gap:6px;">
               <button class="btn btn-green btn-sm" onclick="agentControl('start')">▶ Iniciar</button>
               <button class="btn btn-outline btn-sm" onclick="agentControl('pause')">⏸ Pausar</button>
+              <button class="btn btn-outline btn-sm" onclick="agentReplay()">🔄 Replay</button>
               <button class="btn btn-red btn-sm" onclick="agentControl('stop')">⏹ Parar</button>
               <button class="btn btn-outline btn-sm" onclick="agentControl('reset')">🔄 Reset</button>
             </div>
@@ -2134,6 +2135,18 @@ async function agentControl(action) {
   } catch(e) { console.error(e); }
 }
 
+async function agentReplay() {
+  const el = document.getElementById('evo-agent-state');
+  if (el) el.innerHTML = '🔄 Replay...';
+  try {
+    await fetch('/api/agent/replay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speed: 0, maxCandles: 0, timeframe: 'M5' }),
+    });
+  } catch(e) { console.error(e); }
+}
+
 // Auto-load estudo data when tab is opened
 const origTabSwitch = document.querySelector('.tab-btn')?.onclick;
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -2329,7 +2342,22 @@ function connectWebSocket() {
         case 'ai_deep_report':
           showAICard({ ...data, session: 'deep', content: '📋 RELATÓRIO PROFUNDO\n\n' + data.content });
           break;
-        // Market switch event
+        // Replay events
+        case 'replay_started':
+          document.getElementById('evo-agent-state').innerHTML = `🔄 Replay: ${data.totalCandles} candles`;
+          break;
+        case 'replay_progress':
+          document.getElementById('evo-agent-state').innerHTML = `🔄 Replay: ${data.progress}% (${data.trades} trades)`;
+          break;
+        case 'replay_completed':
+          document.getElementById('evo-agent-state').innerHTML = `✅ Replay: ${data.totalTrades} trades | WR ${data.winRate}% | P&L R$${data.pnl?.toFixed(0)}`;
+          loadAgentStatus();
+          loadAgentTrades();
+          loadLearnerStatus();
+          break;
+        case 'replay_error':
+          document.getElementById('evo-agent-state').innerHTML = `❌ ${data.message}`;
+          break;
         case 'market_switch':
           updateMarketIndicator(data.market);
           if (data.to && data.to !== STATE.tvSymbol?.split(':')[1]?.split('!')[0]) {

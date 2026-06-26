@@ -544,6 +544,18 @@ app.post('/api/agent/reset', (req, res) => {
   state.agent.reset();
   res.json({ status: 'reset' });
 });
+app.post('/api/agent/replay', async (req, res) => {
+  if (!state.agent) return res.status(500).json({ error: 'Agent not initialized' });
+  const { speed, maxCandles, timeframe } = req.body || {};
+  res.json({ status: 'started' });
+  
+  const { runReplay } = require('./engine/replay');
+  runReplay(state.agent, state.learner, state.metaLearner, DATA_DIR, broadcast, {
+    speed: speed || 0,
+    maxCandles: maxCandles || 0,
+    timeframe: timeframe || 'M5',
+  }).catch(console.error);
+});
 app.get('/api/agent/status', (req, res) => {
   if (!state.agent) return res.json({ state: 'off' });
   res.json(state.agent.getStatus());
