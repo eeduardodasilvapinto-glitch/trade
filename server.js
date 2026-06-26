@@ -23,8 +23,32 @@ const HOST = process.env.HOST || '0.0.0.0';
 // Use Railway volume mount path directly, otherwise local ./data
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 const YH_SYMBOL = process.env.YH_SYMBOL || '^BVSP';
-const AV_KEY = process.env.ALPHA_VANTAGE_KEY || '';
-const AV_SYMBOL = process.env.AV_SYMBOL || '^BVSP';
+const AV_KEY = process.env.ALPHA_VANTAGE_KEY || loadKey('ALPHA_VANTAGE_KEY');
+const AV_SYMBOL = process.env.AV_SYMBOL || 'SPY';
+let OPENROUTER_KEY = process.env.OPENROUTER_KEY || loadKey('OPENROUTER_KEY');
+
+// Persistent key storage (survives deploys via volume)
+function loadKey(name) {
+  try {
+    const keyPath = path.join(DATA_DIR, '.keys.json');
+    if (fs.existsSync(keyPath)) {
+      const keys = JSON.parse(fs.readFileSync(keyPath, 'utf-8'));
+      return keys[name] || '';
+    }
+  } catch(e) {}
+  return '';
+}
+
+function saveKeys(keys) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const keyPath = path.join(DATA_DIR, '.keys.json');
+    let existing = {};
+    if (fs.existsSync(keyPath)) existing = JSON.parse(fs.readFileSync(keyPath, 'utf-8'));
+    Object.assign(existing, keys);
+    fs.writeFileSync(keyPath, JSON.stringify(existing, null, 2));
+  } catch(e) {}
+}
 
 // ============================================================================
 // ALPHA VANTAGE — Live data (works on Railway, free tier: 25 req/day)
@@ -516,6 +540,30 @@ app.get('/api/yahoo', (req, res) => {
 app.get('/api/market/status', (req, res) => {
   if (!state.marketRouter) return res.json({ active: 'WIN' });
   res.json(state.marketRouter.getStatus());
+});
+
+// API: Key management (persisted to volume)
+app.get('/api/config/keys', (req, res) => {
+  res.json({
+    openrouter: !!OPENROUTER_KEY,
+    alphavantage: !!AV_KEY,
+  });
+});
+
+app.post('/api/config/keys', express.json(), (req, res) => {
+  const { openrouter, alphavantage } = req.body || {};
+  if (openrouter) {
+    OPENROUTER_KEY = openrouter;
+    process.env.OPENROUTER_KEY = openrouter;
+    saveKeys({ OPENROUTER_KEY: openrouter });
+    // Update AI worker key
+    if (state.aiWorker) state.aiWorker.apiKey = openrouter;
+  }
+  if (alphavantage) {
+    process.env.ALPHA_VANTAGE_KEY = alphavantage;
+    saveKeys({ ALPHA_VANTAGE_KEY: alphavantage });
+  }
+  res.json({ ok: true, openrouter: !!OPENROUTER_KEY, alphavantage: !!process.env.ALPHA_VANTAGE_KEY || !!alphavantage });
 });
 
 // API: Debug Alpha Vantage raw response

@@ -706,7 +706,15 @@ tr:hover { background: var(--bg3); }
           <option value="meta-llama/llama-3.2-3b-instruct:free">Llama 3.2 3B (grátis)</option>
           <option value="mistralai/mistral-small-3.1-24b-instruct:free">Mistral Small 3.1 24B (grátis)</option>
         </select></div>
-        <p class="text-xs" style="color:var(--text2);">Modelos gratuitos via OpenRouter. Sem custo, mas com rate limit.</p>
+        <button class="btn btn-blue btn-sm mt-8" onclick="saveKey('openrouter')">💾 Salvar no Servidor</button>
+        <span id="cfg-or-status" class="text-xs" style="margin-left:8px;"></span>
+      </div>
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-title">🔴 Alpha Vantage (Gráfico ao Vivo)</div>
+        <div class="form-group"><label>API Key (grátis em <a href="https://alphavantage.co/support/#api-key" target="_blank" style="color:var(--blue);">alphavantage.co</a>)</label><input id="cfg-av-key" type="password" placeholder="sua_key_aqui"></div>
+        <button class="btn btn-blue btn-sm mt-8" onclick="saveKey('alphavantage')">💾 Salvar no Servidor</button>
+        <span id="cfg-av-status" class="text-xs" style="margin-left:8px;"></span>
+        <p class="text-xs" style="color:var(--text2); margin-top:4px;">Chave salva no servidor. Sobrevive a deploys. Gráfico Canvas puxa dados ao vivo automaticamente.</p>
       </div>
       <div class="card" style="margin-bottom:12px;">
         <div class="card-title">📥 Importar Dados CSV</div>
@@ -804,6 +812,9 @@ function initCanvasChart() {
   if (tvWidget) { tvWidget.remove(); tvWidget = null; }
   loadCanvasData();
   canvasChart.interval = setInterval(loadCanvasData, 10000);
+  // Auto-fetch live data if key is available
+  const avKey = localStorage.getItem('winfut_av_key');
+  if (avKey) setTimeout(() => fetchLiveData(), 2000);
 }
 
 function stopCanvasChart() {
@@ -1965,14 +1976,28 @@ function saveConfig() {
     tvSymbol: STATE.tvSymbol,
   }));
 
-  // Save AI key separately
-  const aiKey = document.getElementById('cfg-openrouter-key')?.value || '';
-  if (aiKey) localStorage.setItem('winfut_ai_key', aiKey);
-
   document.getElementById('bt-capital').value = STATE.capital;
   document.getElementById('bt-risk').value = STATE.riskPerTrade;
   updateRiskPanel();
   alert('Configurações salvas!');
+}
+
+async function saveKey(type) {
+  const el = document.getElementById(type === 'openrouter' ? 'cfg-openrouter-key' : 'cfg-av-key');
+  const statusEl = document.getElementById(type === 'openrouter' ? 'cfg-or-status' : 'cfg-av-status');
+  const key = el?.value?.trim();
+  if (!key) { if (statusEl) statusEl.innerHTML = '<span class="hl-red">Chave vazia</span>'; return; }
+  
+  try {
+    const body = type === 'openrouter' ? { openrouter: key } : { alphavantage: key };
+    const resp = await fetch('/api/config/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json();
+    if (statusEl) statusEl.innerHTML = '<span class="hl-green">✅ Salva no servidor</span>';
+    if (type === 'openrouter') localStorage.setItem('winfut_ai_key', key);
+    if (type === 'alphavantage') { localStorage.setItem('winfut_av_key', key); fetchLiveData(); }
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span class="hl-red">❌ Erro</span>';
+  }
 }
 
 // === ESTUDO ===
@@ -2606,6 +2631,10 @@ document.head.appendChild(style);
     const el = document.getElementById('cfg-openrouter-key');
     if (el) el.value = savedAIKey;
   }
+  // Check server-saved keys
+  fetch('/api/config/keys').then(r => r.json()).then(d => {
+    if (d.alphavantage) fetchLiveData();
+  }).catch(() => {});
 });
 </script>
 </body>
