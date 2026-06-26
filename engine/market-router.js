@@ -30,14 +30,14 @@ class MarketRouter {
       },
       MES: {
         id: 'MES',
-        name: 'S&P 500 Micro',
-        exchange: 'CME',
-        yhSymbol: process.env.YH_SYMBOL_ALT || 'MES=F',
-        tvSymbol: 'CME_MINI:MES1!',
-        pointValue: 0.10,      // USD por ponto (~R$0.50)
-        openHour: 0,           // Always open except maintenance
-        closeHour: 23.5,       // 1h maintenance window
-        openDays: [1,2,3,4,5], // Seg-Sex, + Sunday eve
+        name: 'S&P 500 (SPY)',
+        exchange: 'NYSE',
+        yhSymbol: 'SPY',
+        tvSymbol: 'AMEX:SPY',
+        pointValue: 0.10,
+        openHour: 0,
+        closeHour: 23.5,
+        openDays: [1,2,3,4,5],
         timezone: 'America/New_York',
         flag: '🇺🇸',
         color: '#58a6ff',
