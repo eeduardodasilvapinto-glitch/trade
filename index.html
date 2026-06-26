@@ -841,13 +841,44 @@ async function loadCanvasData() {
 }
 
 async function fetchLiveData() {
-  const btn = document.querySelector('[onclick="fetchLiveData()"]');
-  if (btn) { btn.textContent = '⏳...'; btn.disabled = true; }
+  const btn = document.querySelector('[onclick=\"fetchLiveData()\"]');
+  const statusEl = document.getElementById('yh-status');
+  const avKey = localStorage.getItem('winfut_av_key');
+  
+  if (!avKey) {
+    if (statusEl) statusEl.innerHTML = '\u26A0 Chave Alpha Vantage nao configurada. Va em Config.';
+    return;
+  }
+  
+  if (btn) { btn.textContent = '\u23F3...'; btn.disabled = true; }
+  if (statusEl) statusEl.innerHTML = '\u23F3 Buscando dados ao vivo...';
+  
   try {
-    await fetch('/api/live/fetch', { method: 'POST' });
-    setTimeout(() => loadCanvasData(), 3000);
-  } catch(e) {}
-  setTimeout(() => { if (btn) { btn.textContent = '🔴 Live'; btn.disabled = false; } }, 5000);
+    const resp = await fetch(`https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=SPY&interval=5min&outputsize=compact&apikey=${avKey}`);
+    const json = await resp.json();
+    
+    if (json.Note)         { if (statusEl) statusEl.innerHTML = '\u26A0 ' + json.Note; if (btn) { btn.textContent = '\uD83D\uDD34 Live'; btn.disabled = false; } return; }
+    if (json['Error Message']) { if (statusEl) statusEl.innerHTML = '\u26A0 ' + json['Error Message']; if (btn) { btn.textContent = '\uD83D\uDD34 Live'; btn.disabled = false; } return; }
+    
+    const ts = json['Time Series (5min)'];
+    if (!ts) { if (statusEl) statusEl.innerHTML = '\u26A0 Sem dados. Mercado fechado?'; if (btn) { btn.textContent = '\uD83D\uDD34 Live'; btn.disabled = false; } return; }
+
+    const data = Object.entries(ts).sort((a, b) => a[0].localeCompare(b[0])).map(([d, v]) => ({
+      t: new Date(d.replace(' ', 'T') + '-03:00').getTime(), o: +v['1. open'], h: +v['2. high'], l: +v['3. low'], c: +v['4. close'], v: +v['5. volume'] || 0
+    }));
+
+    fetch('/api/live/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, symbol: 'SPY', source: 'browser' }) }).catch(()=>{});
+
+    canvasChart.data = data;
+    renderCanvas();
+    const lp = data[data.length - 1].c;
+    document.getElementById('live-price').textContent = lp.toLocaleString('pt-BR');
+    document.getElementById('live-price').className = 'price-badge price-up';
+    if (statusEl) statusEl.innerHTML = '\u2705 Ao vivo: $' + lp.toFixed(2) + ' | ' + data.length + ' candles';
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '\u274C Erro: ' + e.message;
+  }
+  if (btn) { btn.textContent = '\uD83D\uDD34 Live'; btn.disabled = false; }
 }
 
 function renderCanvas() {

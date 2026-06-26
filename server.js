@@ -566,7 +566,25 @@ app.post('/api/config/keys', express.json(), (req, res) => {
   res.json({ ok: true, openrouter: !!OPENROUTER_KEY, alphavantage: !!process.env.ALPHA_VANTAGE_KEY || !!alphavantage });
 });
 
-// API: Debug Alpha Vantage raw response
+// API: Proxy Alpha Vantage (browser → server → Alpha Vantage, bypassa CORS)
+app.get('/api/live/proxy', (req, res) => {
+  const key = process.env.ALPHA_VANTAGE_KEY || AV_KEY;
+  if (!key) return res.status(400).json({ error: 'No Alpha Vantage key configured' });
+  const symbol = req.query.symbol || 'SPY';
+  const tf = req.query.interval || '5min';
+  const url = `/query?function=TIME_SERIES_INTRADAY&symbol=${encodeURIComponent(symbol)}&interval=${tf}&outputsize=compact&apikey=${key}`;
+  console.log(`[AV Proxy] Fetching ${symbol} ${tf}`);
+  https.get({ hostname: 'www.alphavantage.co', path: url, headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 15000 }, (avRes) => {
+    let b = '';
+    avRes.on('data', c => b += c);
+    avRes.on('end', () => {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.send(b);
+    });
+  }).on('error', (e) => res.status(502).json({ error: e.message }))
+    .on('timeout', function() { this.destroy(); res.status(504).json({ error: 'Timeout' }); });
+});
 app.get('/api/live/debug', (req, res) => {
   if (!AV_KEY) return res.json({ error: 'No API key' });
   const symbol = 'SPY';
