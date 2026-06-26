@@ -38,20 +38,28 @@ async function runReplay(agent, learner, metaLearner, dataDir, broadcastFn, opti
     timestamp: new Date().toISOString(),
   });
   
-  // Reset agent for clean replay
-  const wasRunning = agent.state === 'running';
+  // Save previous state to restore later if needed
+  const prevState = {
+    capital: agent.capital,
+    initialCapital: agent.initialCapital,
+    peakCapital: agent.peakCapital,
+    totalTrades: agent.totalTrades,
+    wins: agent.wins,
+    losses: agent.losses,
+    state: agent.state,
+    openPositions: [...agent.openPositions],
+    closedTrades: [...agent.closedTrades],
+  };
+
+  // Don't fully reset — accumulate trades
   agent.state = 'running';
-  agent.capital = 10000;
-  agent.initialCapital = 10000;
-  agent.peakCapital = 10000;
   agent.openPositions = [];
-  agent.totalTrades = 0;
-  agent.wins = 0;
-  agent.losses = 0;
-  agent.consecutiveLosses = 0;
+  agent.pendingSignals = [];
   
-  let tradeCount = 0;
+  let tradeCount = agent.totalTrades;
   let lastBroadcast = Date.now();
+  let winCount = agent.wins;
+  let lossCount = agent.losses;
   const startTime = Date.now();
   
   // Use the agent's internal strategy engine directly on each candle
@@ -153,8 +161,8 @@ async function runReplay(agent, learner, metaLearner, dataDir, broadcastFn, opti
     timestamp: new Date().toISOString(),
   });
   
-  // Restore agent state
-  if (!wasRunning) agent.state = 'paused';
+  // Don't restore old state — keep accumulated trades. Keep agent running.
+  agent.state = 'running';
   
   console.log(`[Replay] Complete: ${result.totalTrades} trades, WR ${result.winRate}%, PF ${result.profitFactor}, P&L R$${result.pnl.toFixed(0)}, ${elapsed}s`);
   
