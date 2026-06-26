@@ -42,6 +42,20 @@ class MarketRouter {
         flag: '🇺🇸',
         color: '#58a6ff',
       },
+      BTC: {
+        id: 'BTC',
+        name: 'Bitcoin',
+        exchange: 'Crypto',
+        yhSymbol: 'BTC-USD',
+        tvSymbol: 'BINANCE:BTCUSDT',
+        pointValue: 1.0,
+        openHour: 0,
+        closeHour: 24,
+        openDays: [0,1,2,3,4,5,6], // 24/7
+        timezone: 'UTC',
+        flag: '₿',
+        color: '#f0883e',
+      },
     };
 
     this.currentMarket = null;
@@ -65,13 +79,16 @@ class MarketRouter {
       return this.markets.MES;
     }
     
-    // Both closed → return last known market (for display purposes)
-    return this.currentMarket || this.markets.WIN;
+    // MES closed → BTC always open (24/7 crypto)
+    return this.markets.BTC;
   }
 
   isMarketOpen(marketId, now = new Date()) {
     const m = this.markets[marketId];
     if (!m) return false;
+    
+    // BTC is always open 24/7
+    if (marketId === 'BTC') return true;
     
     const day = now.getUTCDay();
     
