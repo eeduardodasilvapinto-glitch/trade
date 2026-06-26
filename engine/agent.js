@@ -448,10 +448,10 @@ class Agent {
       this.addSignal('Liquidity_Sweep', 'short', price, atr, 7, weights['Liquidity_Sweep'] || 0.2);
     }
 
-    // Execute best signal (if any)
+    // Execute best signal (if any) — lowered threshold for more trades
     if (this.pendingSignals.length > 0) {
       const best = this.pendingSignals.sort((a, b) => b.score - a.score)[0];
-      if (best.score >= 0.4) {
+      if (best.score >= 0.15) { // was 0.4 — lowered for replay/simulation
         this.executeSignal(best);
       }
     }
