@@ -606,10 +606,14 @@ class Agent {
 
   // Get full agent status
   getStatus() {
-    const winRate = this.totalTrades > 0 ? (this.wins / this.totalTrades * 100).toFixed(1) : '--';
-    const totalPnl = this.capital - this.initialCapital;
-    const dd = this.peakCapital > 0 ? ((this.peakCapital - this.capital) / this.peakCapital * 100).toFixed(1) : '0.0';
-    const pf = this.losses > 0
+    const total = this.closedTrades.length;
+    const wins = this.closedTrades.filter(t => t.result === 'win').length;
+    const losses = this.closedTrades.filter(t => t.result === 'loss').length;
+    const winRate = total > 0 ? (wins / total * 100).toFixed(1) : '--';
+    const totalPnl = this.closedTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const capital = this.initialCapital + totalPnl;
+    const dd = this.peakCapital > 0 ? ((this.peakCapital - capital) / this.peakCapital * 100).toFixed(1) : '0.0';
+    const pf = losses > 0
       ? (this.closedTrades.filter(t => t.result === 'win').reduce((s, t) => s + (t.pnl || 0), 0) /
          Math.abs(this.closedTrades.filter(t => t.result === 'loss').reduce((s, t) => s + (t.pnl || 0), 0)))
       : 0;
@@ -618,13 +622,13 @@ class Agent {
     return {
       market: { id: market.id, name: market.name, symbol: market.yhSymbol, pointValue: market.pointValue, flag: market.flag },
       state: this.state,
-      capital: this.capital,
+      capital,
       initialCapital: this.initialCapital,
       pnl: totalPnl,
       pnlPct: (totalPnl / this.initialCapital * 100).toFixed(1),
-      totalTrades: this.totalTrades,
-      wins: this.wins,
-      losses: this.losses,
+      totalTrades: total,
+      wins,
+      losses,
       winRate,
       profitFactor: pf.toFixed(2),
       drawdown: dd,
