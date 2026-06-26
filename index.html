@@ -5353,8 +5353,19 @@ document.head.appendChild(style);
     if (el) el.value = savedAIKey;
   }
   // Check server-saved keys
-  fetch('/api/config/keys').then(r => r.json()).then(d => {
-    if (d.alphavantage) fetchLiveData();
+  fetch('/api/config/keys/get').then(r => r.json()).then(d => {
+    if (d.alphavantage_key && !localStorage.getItem('winfut_av_key'))
+      localStorage.setItem('winfut_av_key', d.alphavantage_key);
+    if (d.openrouter_key && !localStorage.getItem('winfut_ai_key')) {
+      localStorage.setItem('winfut_ai_key', d.openrouter_key);
+      const el = document.getElementById('cfg-openrouter-key');
+      if (el && !el.value) el.value = d.openrouter_key;
+    }
+    // Auto-fetch live data after key sync
+    if (localStorage.getItem('winfut_av_key')) {
+      setTimeout(fetchLiveData, 2000);
+      setInterval(() => { if (localStorage.getItem('winfut_av_key')) fetchLiveData(); }, 60000);
+    }
   }).catch(() => {});
 });
 </script>
