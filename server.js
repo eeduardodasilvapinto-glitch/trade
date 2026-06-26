@@ -479,12 +479,6 @@ app.get('/api/download/:market/:tf', async (req, res) => {
   const data = await state.marketRouter.fetchMarketData(req.params.market, req.params.tf, cfg[0], cfg[1]);
   res.json({ market: req.params.market, tf: req.params.tf, candles: data?.length || 0 });
 });
-  const configs = { M5:['5m','60d'], M15:['15m','60d'], M30:['30m','60d'], H1:['1h','2y'], D1:['1d','5y'], W1:['1wk','5y'] };
-  const cfg = configs[req.params.tf];
-  if (!cfg) return res.status(400).json({ error: 'Invalid TF. Use M5,M15,M30,H1,D1,W1' });
-  const result = await fetchYahoo(req.params.tf, cfg[0], cfg[1]);
-  res.json({ tf: req.params.tf, total: result?.total || 0, newCandles: result?.newCandles?.length || 0 });
-});
 
 // API: OHLCV data
 app.get('/api/data/:tf', (req, res) => {
